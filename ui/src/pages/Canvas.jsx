@@ -7,6 +7,7 @@ import { ConnectionEdge } from '../components/ConnectionEdge';
 import { ChatPanel } from '../components/ChatPanel';
 import { TerminalPanel } from '../components/TerminalPanel';
 import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon } from 'lucide-react';
+import broker from '../services/broker';
 
 // Register custom node and edge types - Reference: POC Canvas.jsx:9
 const nodeTypes = { agent: AgentNode };
@@ -67,7 +68,7 @@ export const Canvas = () => {
 
     // Add agent node to canvas - Reference: POC Canvas.jsx:24-45
     // Smart naming for multi-model support
-    const addNode = (role) => {
+    const addNode = async (role) => {
         // Use browser's crypto API with fallback for older environments
         const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -102,6 +103,18 @@ export const Canvas = () => {
         };
 
         setNodes((nds) => nds.concat(newNode));
+
+        // Phase 4: Register agent with broker
+        try {
+            await broker.registerAgent(name, {
+                type: 'ui-agent',
+                metadata: { role, nodeId: id },
+                heartbeatIntervalMs: 30000
+            });
+            console.log(`[canvas] Registered agent ${name} with broker`);
+        } catch (error) {
+            console.error(`[canvas] Failed to register agent ${name}:`, error);
+        }
     };
 
     // Context Menu Handlers - Reference: POC Canvas.jsx:153-199
@@ -233,9 +246,100 @@ export const Canvas = () => {
         }
     }, [nodes, edges]);
 
-    // Phase 3: Mock Orchestration Flow
+    // Phase 4: Real Broker Orchestration Flow
     useEffect(() => {
         if (!isOrchestrating || nodes.length === 0) return;
+
+        // Real conversation flow through broker
+        const orchestrateTeam = async () => {
+            const conversations = [
+                { from: 'Alice', to: 'Bob', content: 'Can you review the authentication module?' },
+                { from: 'Bob', to: 'Jerry', content: 'Jerry, please implement the user login endpoint' },
+                { from: 'Jerry', to: 'Bob', content: 'Endpoint implemented. Running tests...' },
+                { from: 'Jerry', content: '✓ All tests passed' },
+                { from: 'Bob', to: 'Alice', content: 'Authentication module is ready for review' },
+                { from: 'Alice', content: 'Great work team! Moving to QA phase.' }
+            ];
+
+            for (let i = 0; i < conversations.length; i++) {
+                if (!isOrchestrating) break; // Stop if orchestration cancelled
+
+                const msg = conversations[i];
+
+                // Send message through broker
+                if (msg.to) {
+                    try {
+                        const result = await broker.sendMessage(msg.to, {
+                            payload: msg.content,
+                            metadata: { origin: msg.from, timestamp: Date.now() }
+                        });
+
+                        console.log(`[orchestration] Sent message ${result.ticketId}: ${msg.from} → ${msg.to}`);
+
+                        // Add to chat display
+                        setChatMessages(prev => [...prev, { ...msg, timestamp: Date.now(), ticketId: result.ticketId }]);
+
+                    } catch (error) {
+                        console.error('[orchestration] Failed to send message:', error);
+                    }
+                } else {
+                    // Broadcast message
+                    setChatMessages(prev => [...prev, { ...msg, timestamp: Date.now() }]);
+                }
+
+                // Simulate realistic timing between messages
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+
+            // Orchestration complete
+            setIsOrchestrating(false);
+        };
+
+        orchestrateTeam();
+
+        // Cleanup on unmount or stop
+        return () => {
+            // Future: cancel pending broker requests
+        };
+    }, [isOrchestrating, nodes.length]);
+
+    // Poll broker for agent status updates
+    useEffect(() => {
+        if (!isOrchestrating) return;
+
+        const interval = setInterval(async () => {
+            try {
+                const agents = await broker.listAgents({ status: 'online' });
+
+                // Update node statuses from broker data
+                setNodes(nds => nds.map(node => {
+                    const agentData = agents.find(a => a.agentId === node.data.name);
+                    if (agentData) {
+                        return {
+                            ...node,
+                            data: {
+                                ...node.data,
+                                status: agentData.status,
+                                // Keep existing task or update from metadata
+                                task: agentData.metadata?.currentTask || node.data.task
+                            }
+                        };
+                    }
+                    return node;
+                }));
+
+            } catch (error) {
+                console.error('[status-poll] Failed to fetch agent statuses:', error);
+            }
+        }, 2000); // Poll every 2 seconds
+
+        return () => clearInterval(interval);
+    }, [isOrchestrating, setNodes]);
+
+    // Legacy mock conversations for fallback
+    useEffect(() => {
+        // This effect is now replaced by real broker orchestration above
+        return;
 
         const mockConversations = [
             { from: 'Alice', to: 'Bob', content: 'Can you review the authentication module?' },
