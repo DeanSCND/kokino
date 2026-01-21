@@ -28,8 +28,9 @@ export const Canvas = () => {
     const [chatMessages, setChatMessages] = useState([]);
     const [terminalOutput, setTerminalOutput] = useState([]);
     const [selectedAgent, setSelectedAgent] = useState(null);
-    const [isChatOpen, setIsChatOpen] = useState(false);
-    const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+
+    // Timeout tracking for cleanup
+    const timeoutRefs = useRef([]);
 
     // Connection handler with validation - Reference: POC Canvas.jsx:22
     const onConnect = useCallback(
@@ -155,8 +156,8 @@ export const Canvas = () => {
     // Mock handlers for Phase 2 - Real implementation in Phase 6 (terminals) and Phase 5 (backend)
     const handleConnect = () => {
         if (!contextMenu?.data?.name) return;
-        // Phase 6 will implement: setTerminalAgent(contextMenu.data.name);
-        alert(`Terminal connection for ${contextMenu.data.name} will be implemented in Phase 6`);
+        // Phase 3: Set selected agent for terminal view
+        setSelectedAgent(contextMenu.data.name);
         closeContextMenu();
     };
 
@@ -207,7 +208,7 @@ export const Canvas = () => {
 
     // Phase 3: Load team from localStorage on mount
     useEffect(() => {
-        const savedTeam = localStorage.getItem('kokino-team');
+        const savedTeam = localStorage.getItem('kokino-team-v1');
         if (savedTeam) {
             try {
                 const { nodes: savedNodes, edges: savedEdges } = JSON.parse(savedTeam);
@@ -217,6 +218,7 @@ export const Canvas = () => {
                 }
             } catch (err) {
                 console.error('Failed to load saved team:', err);
+                localStorage.removeItem('kokino-team-v1');
             }
         }
     }, [setNodes, setEdges]);
@@ -224,7 +226,10 @@ export const Canvas = () => {
     // Phase 3: Save team to localStorage whenever nodes/edges change
     useEffect(() => {
         if (nodes.length > 0 || edges.length > 0) {
-            localStorage.setItem('kokino-team', JSON.stringify({ nodes, edges }));
+            localStorage.setItem('kokino-team-v1', JSON.stringify({ nodes, edges }));
+        } else {
+            // Clear localStorage when canvas is empty
+            localStorage.removeItem('kokino-team-v1');
         }
     }, [nodes, edges]);
 
@@ -297,11 +302,12 @@ export const Canvas = () => {
                 const randomEdge = edges[Math.floor(Math.random() * edges.length)];
                 setEdges((eds) => eds.map((e) => {
                     if (e.id === randomEdge.id) {
-                        setTimeout(() => {
+                        const timeoutId = setTimeout(() => {
                             setEdges((eds2) => eds2.map((e2) =>
                                 e2.id === e.id ? { ...e2, className: 'react-flow__edge' } : e2
                             ));
                         }, 2000);
+                        timeoutRefs.current.push(timeoutId);
                         return { ...e, className: 'react-flow__edge active' };
                     }
                     return e;
@@ -314,7 +320,12 @@ export const Canvas = () => {
             }
         }, 3000);
 
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            // Clear all pending timeouts
+            timeoutRefs.current.forEach(clearTimeout);
+            timeoutRefs.current = [];
+        };
     }, [isOrchestrating, nodes, edges, setNodes, setEdges]);
 
     // Simulation Loop - Phase 2 requirement (now only runs when NOT orchestrating)
@@ -347,23 +358,37 @@ export const Canvas = () => {
             setEdges((eds) => eds.map((e) => {
                 if (e.id === randomEdge.id) {
                     // Activate for 2 seconds then deactivate
-                    setTimeout(() => {
+                    const timeoutId = setTimeout(() => {
                         setEdges((eds2) => eds2.map((e2) =>
                             e2.id === e.id ? { ...e2, className: 'react-flow__edge' } : e2
                         ));
                     }, 2000);
+                    timeoutRefs.current.push(timeoutId);
                     return { ...e, className: 'react-flow__edge active' };
                 }
                 return e;
             }));
         }, 3000); // Run every 3 seconds
 
-        return () => clearInterval(interval);
-    }, [nodes, edges, setNodes, setEdges]);
+        return () => {
+            clearInterval(interval);
+            timeoutRefs.current.forEach(clearTimeout);
+            timeoutRefs.current = [];
+        };
+    }, [isOrchestrating, nodes, edges, setNodes, setEdges]);
+
+    // Topology validation for Start Team button
+    const canStartTeam = nodes.length >= 2 && edges.length >= 1;
 
     return (
         <div className="w-full h-full flex" ref={reactFlowWrapper}>
-            {/* React Flow Canvas */}
+            {/* Left Panel: Communication */}
+            <aside className="w-96 h-full border-r border-border flex flex-col bg-background">
+                <ChatPanel messages={chatMessages} />
+                <TerminalPanel agentName={selectedAgent} output={terminalOutput} />
+            </aside>
+
+            {/* Right Panel: Canvas */}
             <div className="flex-1 h-full relative bg-background">
                 <ReactFlow
                     nodes={nodes}
@@ -393,8 +418,8 @@ export const Canvas = () => {
                     />
                 </ReactFlow>
 
-                {/* Top-right Controls - Phase 3: Start/Stop & Panel Toggles */}
-                <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
+                {/* Top-right Controls - Phase 3: Start/Stop Team */}
+                <div className="absolute top-6 right-6 z-10">
                     <button
                         onClick={() => {
                             if (isOrchestrating) {
@@ -404,16 +429,17 @@ export const Canvas = () => {
                                 setChatMessages([]);
                                 setTerminalOutput([]);
                                 setIsOrchestrating(true);
-                                setIsChatOpen(true);
-                                setIsTerminalOpen(true);
                             }
                         }}
                         className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                             isOrchestrating
                                 ? 'bg-red-500 hover:bg-red-600 text-white'
-                                : 'bg-accent-purple hover:bg-purple-600 text-white'
+                                : canStartTeam
+                                ? 'bg-accent-purple hover:bg-purple-600 text-white'
+                                : 'bg-surface-hover text-text-muted cursor-not-allowed'
                         }`}
-                        disabled={nodes.length === 0}
+                        disabled={!canStartTeam}
+                        title={!canStartTeam ? 'Add at least 2 agents and 1 connection' : ''}
                     >
                         {isOrchestrating ? (
                             <>
@@ -426,32 +452,6 @@ export const Canvas = () => {
                                 Start Team
                             </>
                         )}
-                    </button>
-
-                    <button
-                        onClick={() => setIsChatOpen(!isChatOpen)}
-                        className={`p-2 rounded-lg transition-colors ${
-                            isChatOpen
-                                ? 'bg-accent-purple text-white'
-                                : 'bg-surface border border-border text-text-secondary hover:text-text-primary'
-                        }`}
-                        aria-label="Toggle chat panel"
-                        title="Team Chat"
-                    >
-                        <MessageSquare size={20} />
-                    </button>
-
-                    <button
-                        onClick={() => setIsTerminalOpen(!isTerminalOpen)}
-                        className={`p-2 rounded-lg transition-colors ${
-                            isTerminalOpen
-                                ? 'bg-accent-green text-white'
-                                : 'bg-surface border border-border text-text-secondary hover:text-text-primary'
-                        }`}
-                        aria-label="Toggle terminal panel"
-                        title="Terminal Output"
-                    >
-                        <TerminalIcon size={20} />
                     </button>
                 </div>
 
@@ -560,21 +560,6 @@ export const Canvas = () => {
                         )}
                     </div>
                 )}
-
-                {/* Phase 3: Chat Panel */}
-                <ChatPanel
-                    messages={chatMessages}
-                    isOpen={isChatOpen}
-                    onClose={() => setIsChatOpen(false)}
-                />
-
-                {/* Phase 3: Terminal Panel */}
-                <TerminalPanel
-                    agentName={selectedAgent || 'team'}
-                    output={terminalOutput}
-                    isOpen={isTerminalOpen}
-                    onClose={() => setIsTerminalOpen(false)}
-                />
             </div>
         </div>
     );

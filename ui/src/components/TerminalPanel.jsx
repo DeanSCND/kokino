@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Terminal, X } from 'lucide-react';
 
-export const TerminalPanel = ({ agentName, output = [], isOpen, onClose }) => {
+export const TerminalPanel = ({ agentName, output = [] }) => {
     const outputRef = useRef(null);
 
     // Auto-scroll to bottom when new output arrives
@@ -11,27 +11,18 @@ export const TerminalPanel = ({ agentName, output = [], isOpen, onClose }) => {
         }
     }, [output]);
 
-    if (!isOpen) return null;
-
     return (
-        <div className="absolute bottom-0 left-0 w-[600px] h-[400px] bg-[#18181b] border-r border-t border-zinc-700 rounded-tr-xl shadow-2xl flex flex-col z-20">
+        <div className="flex-1 bg-[#18181b] flex flex-col">
             {/* Header */}
-            <div className="h-10 bg-zinc-800 flex items-center justify-between px-4 border-b border-zinc-700">
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500" />
-                    <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                    <div className="w-3 h-3 rounded-full bg-green-500" />
-                    <span className="ml-2 text-xs font-mono text-zinc-400">
-                        {agentName ? `${agentName.toLowerCase()}-terminal` : 'terminal'}
+            <div className="h-10 bg-zinc-800 flex items-center px-4 border-b border-zinc-700">
+                <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                    <span className="ml-2 text-xs font-mono text-zinc-400 uppercase tracking-wider">
+                        {agentName ? `${agentName.toLowerCase()}-terminal` : 'Terminal'}
                     </span>
                 </div>
-                <button
-                    onClick={onClose}
-                    className="text-zinc-400 hover:text-white transition-colors"
-                    aria-label="Close terminal panel"
-                >
-                    <X size={16} />
-                </button>
             </div>
 
             {/* Terminal Output */}
@@ -57,8 +48,9 @@ export const TerminalPanel = ({ agentName, output = [], isOpen, onClose }) => {
                                     line.type === 'command' ? 'text-zinc-100' :
                                     'text-zinc-300'
                                 }
-                                dangerouslySetInnerHTML={{ __html: line.content }}
-                            />
+                            >
+                                {line.content}
+                            </span>
                         </div>
                     ))
                 )}

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { MessageSquare, X } from 'lucide-react';
 
-export const ChatPanel = ({ messages = [], isOpen, onClose }) => {
+export const ChatPanel = ({ messages = [] }) => {
     const messagesEndRef = useRef(null);
 
     // Auto-scroll to bottom when new messages arrive
@@ -9,23 +9,12 @@ export const ChatPanel = ({ messages = [], isOpen, onClose }) => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    if (!isOpen) return null;
-
     return (
-        <div className="absolute bottom-0 right-0 w-96 h-[500px] bg-surface border-l border-t border-border rounded-tl-xl shadow-2xl flex flex-col z-20">
+        <div className="flex-1 bg-surface border-b border-border flex flex-col">
             {/* Header */}
-            <div className="h-12 bg-surface-hover flex items-center justify-between px-4 border-b border-border">
-                <div className="flex items-center gap-2">
-                    <MessageSquare size={16} className="text-accent-purple" />
-                    <span className="text-sm font-medium text-text-primary">Team Chat</span>
-                </div>
-                <button
-                    onClick={onClose}
-                    className="text-text-secondary hover:text-text-primary transition-colors"
-                    aria-label="Close chat panel"
-                >
-                    <X size={16} />
-                </button>
+            <div className="h-10 bg-surface-hover flex items-center px-4 border-b border-border">
+                <MessageSquare size={14} className="text-accent-purple mr-2" />
+                <span className="text-xs font-medium text-text-primary uppercase tracking-wider">Team Chat</span>
             </div>
 
             {/* Messages Area */}
@@ -70,7 +59,7 @@ export const ChatPanel = ({ messages = [], isOpen, onClose }) => {
             </div>
 
             {/* Footer Status */}
-            <div className="h-10 bg-surface-hover border-t border-border px-4 flex items-center text-xs text-text-muted">
+            <div className="h-8 bg-surface-hover border-t border-border px-4 flex items-center text-xs text-text-muted">
                 {messages.length} message{messages.length !== 1 ? 's' : ''}
             </div>
         </div>
