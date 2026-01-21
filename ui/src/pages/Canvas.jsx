@@ -8,7 +8,8 @@ import { ChatPanel } from '../components/ChatPanel';
 import { TerminalPanel } from '../components/TerminalPanel';
 import { AgentDashboard } from '../components/AgentDashboard';
 import { BrokerStatus } from '../components/BrokerStatus';
-import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard } from 'lucide-react';
+import { TerminalModal } from '../components/TerminalModal';
+import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle } from 'lucide-react';
 import broker from '../services/broker';
 
 // Register custom node and edge types - Reference: POC Canvas.jsx:9
@@ -47,6 +48,14 @@ export const Canvas = () => {
     // Track seen ticket IDs to avoid duplicates (outside chat state)
     const seenTicketIds = useRef(new Set());
 
+    // Phase 5: Loading states
+    const [isAddingAgent, setIsAddingAgent] = useState(false);
+    const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+    const [operationError, setOperationError] = useState(null);
+
+    // Phase 6: Terminal state
+    const [terminalAgent, setTerminalAgent] = useState(null);
+
     // Connection handler with validation - Reference: POC Canvas.jsx:22
     const onConnect = useCallback(
         (params) => {
@@ -83,53 +92,74 @@ export const Canvas = () => {
     // Add agent node to canvas - Reference: POC Canvas.jsx:24-45
     // Smart naming for multi-model support
     const addNode = async (role) => {
-        // Use browser's crypto API with fallback for older environments
-        const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-        // Smart agent naming - supports multi-model orchestration
-        // Reference: POC Canvas.jsx:26-31
-        const name = role === 'Product Manager' ? 'Alice' :
-            role === 'Tech Lead' ? 'Bob' :
-            role === 'Backend' ? 'Jerry' :
-            role === 'Droid' ? 'Steve' :    // Factory Droid
-            role === 'Gemini' ? 'Gemma' :   // Google Gemini
-            `Agent-${id.substring(0, 4)}`;
-
-        // Grid positioning to avoid overlaps
-        // Improvement over POC's random positioning
-        const gridSpacing = 350; // Node width + margin
-        const col = nodes.length % 3;
-        const row = Math.floor(nodes.length / 3);
-
-        const newNode = {
-            id,
-            type: 'agent',
-            position: {
-                x: 100 + (col * gridSpacing),
-                y: 100 + (row * gridSpacing)
-            },
-            data: {
-                name: name,
-                role: role,
-                status: 'idle',
-                task: 'Waiting for orchestration...'
-            }
-        };
-
-        setNodes((nds) => nds.concat(newNode));
-
-        // Phase 4: Register agent with broker
-        console.log(`[canvas] Attempting to register agent ${name} with broker...`);
+        setIsAddingAgent(true);
+        setOperationError(null);
 
         try {
+            // Use browser's crypto API with fallback for older environments
+            const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+            // Smart agent naming - supports multi-model orchestration
+            // Reference: POC Canvas.jsx:26-31
+            const name = role === 'Product Manager' ? 'Alice' :
+                role === 'Tech Lead' ? 'Bob' :
+                role === 'Backend' ? 'Jerry' :
+                role === 'Droid' ? 'Steve' :    // Factory Droid
+                role === 'Gemini' ? 'Gemma' :   // Google Gemini
+                `Agent-${id.substring(0, 4)}`;
+
+            // Grid positioning to avoid overlaps
+            // Improvement over POC's random positioning
+            const gridSpacing = 350; // Node width + margin
+            const col = nodes.length % 3;
+            const row = Math.floor(nodes.length / 3);
+
+            const newNode = {
+                id,
+                type: 'agent',
+                position: {
+                    x: 100 + (col * gridSpacing),
+                    y: 100 + (row * gridSpacing)
+                },
+                data: {
+                    name: name,
+                    role: role,
+                    status: 'registering',
+                    task: 'Registering with broker...'
+                }
+            };
+
+            // Optimistic UI update
+            setNodes((nds) => nds.concat(newNode));
+
+            // Phase 4: Register agent with broker
+            console.log(`[canvas] Attempting to register agent ${name} with broker...`);
+
             const result = await broker.registerAgent(name, {
                 type: 'ui-agent',
                 metadata: { role, nodeId: id },
                 heartbeatIntervalMs: 30000
             });
+
             console.log(`[canvas] ✓ Registered agent ${name} with broker:`, result);
+
+            // Update node status after successful registration
+            setNodes(nds => nds.map(n =>
+                n.id === id
+                    ? { ...n, data: { ...n.data, status: 'idle', task: 'Waiting for orchestration...' } }
+                    : n
+            ));
+
         } catch (error) {
-            console.error(`[canvas] ✗ Failed to register agent ${name}:`, error);
+            console.error(`[canvas] ✗ Failed to register agent:`, error);
+            setOperationError(`Failed to add agent: ${error.message}`);
+
+            // Remove the failed node after a delay
+            setTimeout(() => {
+                setNodes(nds => nds.slice(0, -1));
+            }, 2000);
+        } finally {
+            setIsAddingAgent(false);
         }
     };
 
@@ -182,25 +212,129 @@ export const Canvas = () => {
 
     const onPaneClick = useCallback(() => closeContextMenu(), [closeContextMenu]);
 
-    // Mock handlers for Phase 2 - Real implementation in Phase 6 (terminals) and Phase 5 (backend)
+    // Lifecycle handlers - Phase 5
     const handleConnect = () => {
         if (!contextMenu?.data?.name) return;
-        // Phase 3: Set selected agent for terminal view
-        setSelectedAgent(contextMenu.data.name);
+        // Phase 6: Open terminal modal for agent
+        setTerminalAgent(contextMenu.data.name);
         closeContextMenu();
     };
 
-    const handleStop = () => {
+    const handleStop = async () => {
         if (!contextMenu?.data?.name) return;
         const agentName = contextMenu.data.name;
 
-        // Mock stop - update visual state only
+        // Optimistic UI update
         setNodes((nds) => nds.map((n) => {
             if (n.data.name === agentName) {
-                return { ...n, data: { ...n.data, status: 'offline', task: 'Stopped (mock)' } };
+                return { ...n, data: { ...n.data, status: 'stopping', task: 'Stopping agent...' } };
             }
             return n;
         }));
+
+        try {
+            await broker.stopAgent(agentName);
+            console.log(`[lifecycle] Stopped agent: ${agentName}`);
+
+            // Update to final state
+            setNodes((nds) => nds.map((n) => {
+                if (n.data.name === agentName) {
+                    return { ...n, data: { ...n.data, status: 'offline', task: 'Agent stopped' } };
+                }
+                return n;
+            }));
+        } catch (error) {
+            console.error(`[lifecycle] Failed to stop ${agentName}:`, error);
+            setOperationError(`Failed to stop agent: ${error.message}`);
+
+            // Rollback to previous state
+            setNodes((nds) => nds.map((n) => {
+                if (n.data.name === agentName) {
+                    return { ...n, data: { ...n.data, status: 'idle', task: 'Failed to stop' } };
+                }
+                return n;
+            }));
+        }
+
+        closeContextMenu();
+    };
+
+    const handleStart = async () => {
+        if (!contextMenu?.data?.name) return;
+        const agentName = contextMenu.data.name;
+
+        // Optimistic UI update
+        setNodes((nds) => nds.map((n) => {
+            if (n.data.name === agentName) {
+                return { ...n, data: { ...n.data, status: 'starting', task: 'Starting agent...' } };
+            }
+            return n;
+        }));
+
+        try {
+            await broker.startAgent(agentName);
+            console.log(`[lifecycle] Started agent: ${agentName}`);
+
+            // Update to final state
+            setNodes((nds) => nds.map((n) => {
+                if (n.data.name === agentName) {
+                    return { ...n, data: { ...n.data, status: 'online', task: 'Waiting for orchestration...' } };
+                }
+                return n;
+            }));
+        } catch (error) {
+            console.error(`[lifecycle] Failed to start ${agentName}:`, error);
+            setOperationError(`Failed to start agent: ${error.message}`);
+
+            // Rollback
+            setNodes((nds) => nds.map((n) => {
+                if (n.data.name === agentName) {
+                    return { ...n, data: { ...n.data, status: 'offline', task: 'Failed to start' } };
+                }
+                return n;
+            }));
+        }
+
+        closeContextMenu();
+    };
+
+    const handleRestart = async () => {
+        if (!contextMenu?.data?.name) return;
+        const agentName = contextMenu.data.name;
+
+        // Optimistic UI update
+        setNodes((nds) => nds.map((n) => {
+            if (n.data.name === agentName) {
+                return { ...n, data: { ...n.data, status: 'restarting', task: 'Restarting agent...' } };
+            }
+            return n;
+        }));
+
+        try {
+            await broker.restartAgent(agentName);
+            console.log(`[lifecycle] Restarted agent: ${agentName}`);
+
+            // Update to final state after a brief delay (restart takes ~100ms)
+            setTimeout(() => {
+                setNodes((nds) => nds.map((n) => {
+                    if (n.data.name === agentName) {
+                        return { ...n, data: { ...n.data, status: 'online', task: 'Waiting for orchestration...' } };
+                    }
+                    return n;
+                }));
+            }, 150);
+        } catch (error) {
+            console.error(`[lifecycle] Failed to restart ${agentName}:`, error);
+            setOperationError(`Failed to restart agent: ${error.message}`);
+
+            // Rollback
+            setNodes((nds) => nds.map((n) => {
+                if (n.data.name === agentName) {
+                    return { ...n, data: { ...n.data, status: 'offline', task: 'Failed to restart' } };
+                }
+                return n;
+            }));
+        }
 
         closeContextMenu();
     };
@@ -692,7 +826,12 @@ export const Canvas = () => {
 
                             <button
                                 onClick={() => {
-                                    setStepMode(true);
+                                    const newStepMode = !stepMode;
+                                    setStepMode(newStepMode);
+                                    if (!newStepMode) {
+                                        // Reset advance flag when disabling step mode
+                                        advanceStepRef.current = false;
+                                    }
                                     setIsPaused(false);
                                 }}
                                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -724,16 +863,37 @@ export const Canvas = () => {
                     <BrokerStatus />
 
                     <div className="flex flex-col gap-2 bg-surface/80 backdrop-blur border border-border p-4 rounded-xl shadow-xl w-64">
-                        <h3 className="text-sm font-medium text-text-primary mb-2">Team Composition</h3>
+                        <h3 className="text-sm font-medium text-text-primary mb-2 flex items-center justify-between">
+                            Team Composition
+                            {isAddingAgent && <Loader2 size={14} className="animate-spin text-accent-purple" />}
+                        </h3>
+
+                        {/* Error Message */}
+                        {operationError && (
+                            <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-2">
+                                <AlertCircle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
+                                <p className="text-xs text-red-400">{operationError}</p>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-2">
                             {['Product Manager', 'Tech Lead', 'Frontend', 'Backend', 'QA', 'Droid', 'Gemini'].map((role) => (
                                 <button
                                     key={role}
                                     onClick={() => addNode(role)}
-                                    className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-background hover:border-text-secondary transition-colors group cursor-pointer"
+                                    disabled={isAddingAgent}
+                                    className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-colors ${
+                                        isAddingAgent
+                                            ? 'border-border bg-background/50 cursor-not-allowed opacity-50'
+                                            : 'border-border bg-background hover:border-text-secondary group cursor-pointer'
+                                    }`}
                                 >
-                                    <div className="w-8 h-8 rounded-full bg-surface mb-2 flex items-center justify-center group-hover:bg-accent-purple/20 transition-colors">
-                                        <Plus size={16} className="text-text-secondary group-hover:text-accent-purple" />
+                                    <div className={`w-8 h-8 rounded-full bg-surface mb-2 flex items-center justify-center transition-colors ${
+                                        !isAddingAgent && 'group-hover:bg-accent-purple/20'
+                                    }`}>
+                                        <Plus size={16} className={`text-text-secondary ${
+                                            !isAddingAgent && 'group-hover:text-accent-purple'
+                                        }`} />
                                     </div>
                                     <span className="text-[10px] text-text-secondary uppercase tracking-wide font-medium text-center">
                                         {role}
@@ -773,12 +933,28 @@ export const Canvas = () => {
                                     Connect Terminal
                                 </button>
                                 <button
+                                    onClick={handleStart}
+                                    className="w-full text-left px-4 py-2 text-sm text-green-400 hover:bg-zinc-800 hover:text-green-300 transition-colors flex items-center gap-2"
+                                    role="menuitem"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                    Start Agent
+                                </button>
+                                <button
                                     onClick={handleStop}
                                     className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-zinc-800 hover:text-red-300 transition-colors flex items-center gap-2"
                                     role="menuitem"
                                 >
                                     <span className="w-2 h-2 rounded-full bg-red-500"></span>
                                     Stop Agent
+                                </button>
+                                <button
+                                    onClick={handleRestart}
+                                    className="w-full text-left px-4 py-2 text-sm text-yellow-400 hover:bg-zinc-800 hover:text-yellow-300 transition-colors flex items-center gap-2"
+                                    role="menuitem"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+                                    Restart Agent
                                 </button>
                             </>
                         ) : (
@@ -825,6 +1001,14 @@ export const Canvas = () => {
                             </>
                         )}
                     </div>
+                )}
+
+                {/* Phase 6: Terminal Modal */}
+                {terminalAgent && (
+                    <TerminalModal
+                        agentId={terminalAgent}
+                        onClose={() => setTerminalAgent(null)}
+                    />
                 )}
             </div>
         </div>

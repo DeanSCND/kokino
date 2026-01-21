@@ -1,6 +1,7 @@
 import * as http from 'node:http';
 import { WebSocketServer } from 'ws';
 import { URL } from 'node:url';
+import { spawn } from 'node:child_process';
 
 import { AgentRegistry } from './models/AgentRegistry.js';
 import { TicketStore } from './models/TicketStore.js';
@@ -90,6 +91,27 @@ const server = http.createServer(async (req, res) => {
       return await agentRoutes.heartbeat(req, res, agentId);
     }
 
+    // Lifecycle: Start
+    const startMatch = pathname.match(/^\/agents\/([^\/]+)\/start$/);
+    if (startMatch && method === 'POST') {
+      const agentId = startMatch[1];
+      return await agentRoutes.start(req, res, agentId);
+    }
+
+    // Lifecycle: Stop
+    const stopMatch = pathname.match(/^\/agents\/([^\/]+)\/stop$/);
+    if (stopMatch && method === 'POST') {
+      const agentId = stopMatch[1];
+      return await agentRoutes.stop(req, res, agentId);
+    }
+
+    // Lifecycle: Restart
+    const restartMatch = pathname.match(/^\/agents\/([^\/]+)\/restart$/);
+    if (restartMatch && method === 'POST') {
+      const agentId = restartMatch[1];
+      return await agentRoutes.restart(req, res, agentId);
+    }
+
     // Post reply
     if (pathname === '/replies' && method === 'POST') {
       return await messageRoutes.postReply(req, res);
@@ -131,18 +153,79 @@ wss.on('connection', (ws, req) => {
     const agentId = terminalMatch[1];
     console.log(`[ws] Terminal connection for agent: ${agentId}`);
 
-    // Phase 6 will implement tmux PTY proxy
-    ws.send(JSON.stringify({
-      type: 'info',
-      message: 'Terminal proxy not yet implemented (Phase 6)'
-    }));
+    // Spawn tmux attach process
+    const tmuxSession = `dev-${agentId}`;
 
-    ws.on('message', (data) => {
-      console.log(`[ws/${agentId}] Received:`, data.toString());
+    // Try to attach to existing session, or create new one if it doesn't exist
+    const pty = spawn('tmux', ['new-session', '-A', '-s', tmuxSession, '-x', '80', '-y', '24'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor'
+      }
     });
 
+    let ptyActive = true;
+
+    // PTY stdout → WebSocket
+    pty.stdout.on('data', (data) => {
+      if (ws.readyState === 1 && ptyActive) {
+        ws.send(data.toString());
+      }
+    });
+
+    // PTY stderr → WebSocket (error messages)
+    pty.stderr.on('data', (data) => {
+      if (ws.readyState === 1 && ptyActive) {
+        const error = data.toString();
+        console.error(`[ws/${agentId}] PTY error:`, error);
+        ws.send(`\x1b[31m${error}\x1b[0m`);
+      }
+    });
+
+    // WebSocket → PTY stdin
+    ws.on('message', (data) => {
+      if (ptyActive && pty.stdin.writable) {
+        pty.stdin.write(data);
+      }
+    });
+
+    // Handle PTY process exit
+    pty.on('exit', (code) => {
+      console.log(`[ws/${agentId}] PTY process exited with code ${code}`);
+      ptyActive = false;
+      if (ws.readyState === 1) {
+        ws.send(`\r\n\x1b[33m[Session ended with code ${code}]\x1b[0m\r\n`);
+        ws.close();
+      }
+    });
+
+    pty.on('error', (err) => {
+      console.error(`[ws/${agentId}] PTY error:`, err);
+      ptyActive = false;
+      if (ws.readyState === 1) {
+        ws.send(`\r\n\x1b[31m[Error: ${err.message}]\x1b[0m\r\n`);
+        ws.close();
+      }
+    });
+
+    // Cleanup on WebSocket disconnect
     ws.on('close', () => {
-      console.log(`[ws/${agentId}] Connection closed`);
+      console.log(`[ws/${agentId}] WebSocket closed`);
+      if (ptyActive) {
+        ptyActive = false;
+        // Detach from tmux session (don't kill it)
+        pty.stdin.end();
+        pty.kill('SIGTERM');
+      }
+    });
+
+    ws.on('error', (err) => {
+      // Only log real errors, not cleanup errors
+      if (ws.readyState !== 2 && ws.readyState !== 3) {
+        console.error(`[ws/${agentId}] WebSocket error:`, err);
+      }
     });
 
     return;
