@@ -7,6 +7,7 @@ import { ConnectionEdge } from '../components/ConnectionEdge';
 import { ChatPanel } from '../components/ChatPanel';
 import { TerminalPanel } from '../components/TerminalPanel';
 import { AgentDashboard } from '../components/AgentDashboard';
+import { BrokerStatus } from '../components/BrokerStatus';
 import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard } from 'lucide-react';
 import broker from '../services/broker';
 
@@ -711,6 +712,9 @@ export const Canvas = () => {
 
                 {/* Floating Agent Library Panel - Reference: POC Canvas.jsx:223-242 */}
                 <div className="absolute top-6 left-6 flex flex-col gap-4 z-10">
+                    {/* Broker Connection Status */}
+                    <BrokerStatus />
+
                     <div className="flex flex-col gap-2 bg-surface/80 backdrop-blur border border-border p-4 rounded-xl shadow-xl w-64">
                         <h3 className="text-sm font-medium text-text-primary mb-2">Team Composition</h3>
                         <div className="grid grid-cols-2 gap-2">
