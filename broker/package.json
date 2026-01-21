@@ -8,10 +8,16 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js"
   },
-  "keywords": ["agent", "broker", "orchestration", "message-broker"],
+  "keywords": [
+    "agent",
+    "broker",
+    "orchestration",
+    "message-broker"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "ws": "^8.18.0"
   },
   "engines": {

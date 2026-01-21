@@ -1,54 +1,51 @@
-// In-memory agent registry with heartbeat tracking
+// Agent registry with SQLite persistence and heartbeat tracking
+import { AgentRepository } from '../db/AgentRepository.js';
 
 export class AgentRegistry {
   constructor() {
-    this.agents = new Map();
+    this.repo = new AgentRepository();
+
+    // Load existing agents from database on startup
+    const agents = this.repo.getAll();
+    console.log(`[registry] Loaded ${agents.length} agents from database`);
   }
 
   register(agentId, { type, metadata = {}, heartbeatIntervalMs }) {
     const now = new Date().toISOString();
-    const record = this.agents.get(agentId) || { agentId };
+    const existing = this.repo.get(agentId);
 
-    record.type = type ?? record.type ?? 'unknown';
-    record.metadata = { ...record.metadata, ...metadata };
-    record.status = 'online';
-    record.lastHeartbeat = now;
-    record.heartbeatIntervalMs = heartbeatIntervalMs ?? record.heartbeatIntervalMs ?? null;
+    const record = {
+      agentId,
+      type: type ?? existing?.type ?? 'unknown',
+      metadata: { ...existing?.metadata, ...metadata },
+      status: 'online',
+      lastHeartbeat: now,
+      heartbeatIntervalMs: heartbeatIntervalMs ?? existing?.heartbeatIntervalMs ?? 30000
+    };
 
-    this.agents.set(agentId, record);
+    this.repo.save(record);
     console.log(`[registry] Registered agent: ${agentId} (${type})`);
     return record;
   }
 
   touch(agentId) {
-    const record = this.agents.get(agentId);
-    if (record) {
-      record.lastHeartbeat = new Date().toISOString();
-      record.status = 'online';
+    const updated = this.repo.updateHeartbeat(agentId);
+    if (updated) {
+      return this.repo.get(agentId);
     }
-    return record;
+    return null;
   }
 
   get(agentId) {
-    return this.agents.get(agentId);
+    return this.repo.get(agentId);
   }
 
   list(filters = {}) {
-    let results = Array.from(this.agents.values());
-
-    if (filters.type) {
-      results = results.filter(a => a.type === filters.type);
-    }
-
-    if (filters.status) {
-      results = results.filter(a => a.status === filters.status);
-    }
-
-    return results;
+    return this.repo.getAll(filters);
   }
 
   delete(agentId) {
-    const existed = this.agents.delete(agentId);
+    const existed = this.repo.delete(agentId);
     if (existed) {
       console.log(`[registry] Deleted agent: ${agentId}`);
     }
@@ -56,6 +53,6 @@ export class AgentRegistry {
   }
 
   size() {
-    return this.agents.size;
+    return this.repo.getAll().length;
   }
 }

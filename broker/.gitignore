@@ -1,4 +1,7 @@
 node_modules/
+
+# SQLite database files
+data/
 *.log
 .DS_Store
 data/*.db

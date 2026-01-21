@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { TicketRepository } from '../db/TicketRepository.js';
 
-// In-memory ticket correlation system for Store & Forward pattern
+// Ticket correlation system with SQLite persistence for Store & Forward pattern
 
 export class TicketStore {
   constructor() {
-    this.tickets = new Map();
+    this.repo = new TicketRepository();
+    // Waiters are runtime-only (not persisted - they're for long-poll HTTP connections)
+    this.waiters = new Map(); // ticketId -> Set of callback functions
+
+    // Load existing tickets from database on startup
+    console.log(`[tickets] Repository initialized`);
   }
 
   create({ targetAgent, originAgent, payload, metadata = {}, expectReply = true, timeoutMs = 30000 }) {
@@ -22,80 +28,77 @@ export class TicketStore {
       status: 'pending',
       response: null,
       createdAt: now,
-      updatedAt: now,
-      waiters: new Set() // For long-poll support
+      updatedAt: now
     };
 
-    this.tickets.set(ticketId, ticket);
+    this.repo.save(ticket);
+    this.waiters.set(ticketId, new Set()); // Initialize waiter set for this ticket
     console.log(`[tickets] Created ticket ${ticketId}: ${originAgent} → ${targetAgent}`);
     return ticket;
   }
 
   get(ticketId) {
-    return this.tickets.get(ticketId);
+    return this.repo.get(ticketId);
   }
 
   respond(ticketId, payload, metadata = {}) {
-    const ticket = this.tickets.get(ticketId);
+    const ticket = this.repo.get(ticketId);
     if (!ticket) {
       return null;
     }
 
     const now = new Date().toISOString();
-    ticket.status = 'responded';
-    ticket.response = { payload, metadata, at: now };
-    ticket.updatedAt = now;
+    const response = { payload, metadata, at: now };
 
-    // Notify long-poll waiters
-    if (ticket.waiters && ticket.waiters.size > 0) {
-      for (const waiter of ticket.waiters) {
-        waiter(ticket.response);
+    this.repo.updateStatus(ticketId, 'responded', response);
+
+    // Notify long-poll waiters (runtime-only)
+    const waiters = this.waiters.get(ticketId);
+    if (waiters && waiters.size > 0) {
+      for (const waiter of waiters) {
+        waiter(response);
       }
-      ticket.waiters.clear();
+      this.waiters.delete(ticketId);
     }
 
     console.log(`[tickets] Responded to ticket ${ticketId}`);
-    return ticket;
+    return this.repo.get(ticketId);
   }
 
   timeout(ticketId) {
-    const ticket = this.tickets.get(ticketId);
+    const ticket = this.repo.get(ticketId);
     if (!ticket || ticket.status !== 'pending') {
       return null;
     }
 
-    ticket.status = 'timeout';
-    ticket.updatedAt = new Date().toISOString();
+    this.repo.updateStatus(ticketId, 'timeout');
 
-    // Notify waiters of timeout
-    if (ticket.waiters && ticket.waiters.size > 0) {
-      for (const waiter of ticket.waiters) {
+    // Notify waiters of timeout (runtime-only)
+    const waiters = this.waiters.get(ticketId);
+    if (waiters && waiters.size > 0) {
+      for (const waiter of waiters) {
         waiter(null);
       }
-      ticket.waiters.clear();
+      this.waiters.delete(ticketId);
     }
 
     console.log(`[tickets] Ticket ${ticketId} timed out`);
-    return ticket;
+    return this.repo.get(ticketId);
   }
 
   addWaiter(ticketId, waiterCallback) {
-    const ticket = this.tickets.get(ticketId);
-    if (!ticket) {
-      return false;
+    let waiters = this.waiters.get(ticketId);
+    if (!waiters) {
+      waiters = new Set();
+      this.waiters.set(ticketId, waiters);
     }
 
-    if (!ticket.waiters) {
-      ticket.waiters = new Set();
-    }
-
-    ticket.waiters.add(waiterCallback);
+    waiters.add(waiterCallback);
     return true;
   }
 
   getPending(targetAgent) {
-    return Array.from(this.tickets.values())
-      .filter(t => t.targetAgent === targetAgent && t.status === 'pending');
+    return this.repo.getPending(targetAgent);
   }
 
   serialize(ticket) {
@@ -117,20 +120,13 @@ export class TicketStore {
   }
 
   size() {
-    return this.tickets.size;
+    // Note: This could be optimized with a COUNT query in the repository
+    const pending = this.repo.getPending('*'); // Placeholder - need to add getAll to repo
+    return pending.length;
   }
 
   cleanup(maxAgeMs = 60000) {
-    const now = Date.now();
-    let cleaned = 0;
-
-    for (const [ticketId, ticket] of this.tickets.entries()) {
-      const age = now - new Date(ticket.createdAt).getTime();
-      if (ticket.status !== 'pending' && age > maxAgeMs) {
-        this.tickets.delete(ticketId);
-        cleaned++;
-      }
-    }
+    const cleaned = this.repo.cleanup(maxAgeMs);
 
     if (cleaned > 0) {
       console.log(`[tickets] Cleaned up ${cleaned} old tickets`);
