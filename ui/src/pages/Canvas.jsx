@@ -6,7 +6,8 @@ import { AgentNode } from '../components/AgentNode';
 import { ConnectionEdge } from '../components/ConnectionEdge';
 import { ChatPanel } from '../components/ChatPanel';
 import { TerminalPanel } from '../components/TerminalPanel';
-import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon } from 'lucide-react';
+import { AgentDashboard } from '../components/AgentDashboard';
+import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard } from 'lucide-react';
 import broker from '../services/broker';
 
 // Register custom node and edge types - Reference: POC Canvas.jsx:9
@@ -29,6 +30,14 @@ export const Canvas = () => {
     const [chatMessages, setChatMessages] = useState([]);
     const [terminalOutput, setTerminalOutput] = useState([]);
     const [selectedAgent, setSelectedAgent] = useState(null);
+
+    // Phase 4: Dashboard view toggle
+    const [activeView, setActiveView] = useState('chat'); // 'chat' or 'dashboard'
+
+    // Phase 4: Workflow controls
+    const [isPaused, setIsPaused] = useState(false);
+    const [currentStep, setCurrentStep] = useState(0);
+    const [stepMode, setStepMode] = useState(false);
 
     // Timeout tracking for cleanup
     const timeoutRefs = useRef([]);
@@ -248,7 +257,7 @@ export const Canvas = () => {
         }
     }, [nodes, edges]);
 
-    // Phase 4: Real Broker Orchestration Flow
+    // Phase 4: Real Broker Orchestration Flow with Step Controls
     useEffect(() => {
         if (!isOrchestrating || nodes.length === 0) return;
 
@@ -265,6 +274,22 @@ export const Canvas = () => {
 
             for (let i = 0; i < conversations.length; i++) {
                 if (!isOrchestrating) break; // Stop if orchestration cancelled
+
+                // Step mode: wait for manual advance
+                if (stepMode) {
+                    setCurrentStep(i);
+                    // Wait until currentStep advances
+                    while (stepMode && currentStep === i && isOrchestrating) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                    if (!isOrchestrating) break;
+                }
+
+                // Pause mode: wait until resumed
+                while (isPaused && isOrchestrating) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                if (!isOrchestrating) break;
 
                 const msg = conversations[i];
 
@@ -289,12 +314,16 @@ export const Canvas = () => {
                     setChatMessages(prev => [...prev, { ...msg, timestamp: Date.now() }]);
                 }
 
-                // Simulate realistic timing between messages
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                // Simulate realistic timing between messages (skip in step mode)
+                if (!stepMode) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
             }
 
             // Orchestration complete
             setIsOrchestrating(false);
+            setStepMode(false);
+            setCurrentStep(0);
         };
 
         orchestrateTeam();
@@ -303,12 +332,10 @@ export const Canvas = () => {
         return () => {
             // Future: cancel pending broker requests
         };
-    }, [isOrchestrating, nodes.length]);
+    }, [isOrchestrating, nodes.length, isPaused, stepMode, currentStep]);
 
-    // Poll broker for agent status updates
+    // Poll broker for agent status updates (continuous, not just during orchestration)
     useEffect(() => {
-        if (!isOrchestrating) return;
-
         const interval = setInterval(async () => {
             try {
                 const agents = await broker.listAgents({ status: 'online' });
@@ -322,7 +349,6 @@ export const Canvas = () => {
                             data: {
                                 ...node.data,
                                 status: agentData.status,
-                                // Keep existing task or update from metadata
                                 task: agentData.metadata?.currentTask || node.data.task
                             }
                         };
@@ -333,10 +359,48 @@ export const Canvas = () => {
             } catch (error) {
                 console.error('[status-poll] Failed to fetch agent statuses:', error);
             }
-        }, 2000); // Poll every 2 seconds
+        }, 2000);
 
         return () => clearInterval(interval);
-    }, [isOrchestrating, setNodes]);
+    }, [setNodes]);
+
+    // Poll broker for pending tickets (inbound messages)
+    useEffect(() => {
+        if (nodes.length === 0) return;
+
+        const interval = setInterval(async () => {
+            // Poll each agent for pending tickets
+            for (const node of nodes) {
+                const agentName = node.data.name;
+                try {
+                    const pending = await broker.getPendingTickets(agentName);
+
+                    if (pending.length > 0) {
+                        console.log(`[ticket-poll] ${agentName} has ${pending.length} pending tickets`);
+
+                        // Add pending tickets to chat
+                        for (const ticket of pending) {
+                            const exists = chatMessages.some(msg => msg.ticketId === ticket.ticketId);
+                            if (!exists) {
+                                setChatMessages(prev => [...prev, {
+                                    from: ticket.originAgent,
+                                    to: agentName,
+                                    content: ticket.payload,
+                                    timestamp: new Date(ticket.createdAt).getTime(),
+                                    ticketId: ticket.ticketId,
+                                    status: ticket.status
+                                }]);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(`[ticket-poll] Failed to fetch tickets for ${agentName}:`, error);
+                }
+            }
+        }, 3000); // Poll every 3 seconds
+
+        return () => clearInterval(interval);
+    }, [nodes, chatMessages, setChatMessages]);
 
     // Legacy mock conversations for fallback
     useEffect(() => {
@@ -490,8 +554,45 @@ export const Canvas = () => {
         <div className="w-full h-full flex" ref={reactFlowWrapper}>
             {/* Left Panel: Communication */}
             <aside className="w-96 h-full border-r border-border flex flex-col bg-background">
-                <ChatPanel messages={chatMessages} />
-                <TerminalPanel agentName={selectedAgent} output={terminalOutput} />
+                {/* View Toggle Tabs */}
+                <div className="flex border-b border-border bg-surface">
+                    <button
+                        onClick={() => setActiveView('chat')}
+                        className={`flex-1 px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors ${
+                            activeView === 'chat'
+                                ? 'bg-surface-hover text-text-primary border-b-2 border-accent-purple'
+                                : 'text-text-muted hover:text-text-secondary'
+                        }`}
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                            <MessageSquare size={14} />
+                            Chat
+                        </div>
+                    </button>
+                    <button
+                        onClick={() => setActiveView('dashboard')}
+                        className={`flex-1 px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors ${
+                            activeView === 'dashboard'
+                                ? 'bg-surface-hover text-text-primary border-b-2 border-accent-purple'
+                                : 'text-text-muted hover:text-text-secondary'
+                        }`}
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                            <LayoutDashboard size={14} />
+                            Dashboard
+                        </div>
+                    </button>
+                </div>
+
+                {/* Active View */}
+                {activeView === 'chat' ? (
+                    <>
+                        <ChatPanel messages={chatMessages} />
+                        <TerminalPanel agentName={selectedAgent} output={terminalOutput} />
+                    </>
+                ) : (
+                    <AgentDashboard />
+                )}
             </aside>
 
             {/* Right Panel: Canvas */}
@@ -524,16 +625,21 @@ export const Canvas = () => {
                     />
                 </ReactFlow>
 
-                {/* Top-right Controls - Phase 3: Start/Stop Team */}
-                <div className="absolute top-6 right-6 z-10">
+                {/* Top-right Controls - Phase 4: Workflow Controls */}
+                <div className="absolute top-6 right-6 z-10 flex flex-col gap-2">
+                    {/* Primary Control: Start/Stop */}
                     <button
                         onClick={() => {
                             if (isOrchestrating) {
                                 setIsOrchestrating(false);
+                                setIsPaused(false);
+                                setStepMode(false);
+                                setCurrentStep(0);
                             } else {
                                 // Reset and start orchestration
                                 setChatMessages([]);
                                 setTerminalOutput([]);
+                                setCurrentStep(0);
                                 setIsOrchestrating(true);
                             }
                         }}
@@ -559,6 +665,48 @@ export const Canvas = () => {
                             </>
                         )}
                     </button>
+
+                    {/* Secondary Controls: Pause/Resume/Step (only visible during orchestration) */}
+                    {isOrchestrating && (
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setIsPaused(!isPaused)}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    isPaused
+                                        ? 'bg-green-500 hover:bg-green-600 text-white'
+                                        : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                                }`}
+                                title={isPaused ? 'Resume' : 'Pause'}
+                            >
+                                {isPaused ? 'Resume' : 'Pause'}
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    setStepMode(true);
+                                    setIsPaused(false);
+                                }}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    stepMode
+                                        ? 'bg-accent-blue text-white'
+                                        : 'bg-surface-hover hover:bg-surface text-text-primary border border-border'
+                                }`}
+                                title="Step Mode"
+                            >
+                                Step Mode
+                            </button>
+
+                            {stepMode && (
+                                <button
+                                    onClick={() => setCurrentStep(prev => prev + 1)}
+                                    className="px-3 py-2 rounded-lg text-sm font-medium bg-accent-purple hover:bg-purple-600 text-white transition-colors"
+                                    title="Next Step"
+                                >
+                                    Next →
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Floating Agent Library Panel - Reference: POC Canvas.jsx:223-242 */}
