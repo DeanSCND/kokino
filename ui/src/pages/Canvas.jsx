@@ -37,11 +37,15 @@ export const Canvas = () => {
 
     // Phase 4: Workflow controls
     const [isPaused, setIsPaused] = useState(false);
-    const [currentStep, setCurrentStep] = useState(0);
     const [stepMode, setStepMode] = useState(false);
+    const currentStepRef = useRef(0); // Use ref to avoid effect re-triggering
+    const advanceStepRef = useRef(false); // Signal to advance to next step
 
     // Timeout tracking for cleanup
     const timeoutRefs = useRef([]);
+
+    // Track seen ticket IDs to avoid duplicates (outside chat state)
+    const seenTicketIds = useRef(new Set());
 
     // Connection handler with validation - Reference: POC Canvas.jsx:22
     const onConnect = useCallback(
@@ -278,9 +282,11 @@ export const Canvas = () => {
 
                 // Step mode: wait for manual advance
                 if (stepMode) {
-                    setCurrentStep(i);
-                    // Wait until currentStep advances
-                    while (stepMode && currentStep === i && isOrchestrating) {
+                    currentStepRef.current = i;
+                    advanceStepRef.current = false;
+
+                    // Wait until advanceStepRef is set to true
+                    while (stepMode && !advanceStepRef.current && isOrchestrating) {
                         await new Promise(resolve => setTimeout(resolve, 100));
                     }
                     if (!isOrchestrating) break;
@@ -324,7 +330,7 @@ export const Canvas = () => {
             // Orchestration complete
             setIsOrchestrating(false);
             setStepMode(false);
-            setCurrentStep(0);
+            currentStepRef.current = 0;
         };
 
         orchestrateTeam();
@@ -333,7 +339,7 @@ export const Canvas = () => {
         return () => {
             // Future: cancel pending broker requests
         };
-    }, [isOrchestrating, nodes.length, isPaused, stepMode, currentStep]);
+    }, [isOrchestrating, nodes.length, isPaused, stepMode]);
 
     // Poll broker for agent status updates (continuous, not just during orchestration)
     useEffect(() => {
@@ -379,10 +385,11 @@ export const Canvas = () => {
                     if (pending.length > 0) {
                         console.log(`[ticket-poll] ${agentName} has ${pending.length} pending tickets`);
 
-                        // Add pending tickets to chat
+                        // Add pending tickets to chat (check seenTicketIds ref, not state)
                         for (const ticket of pending) {
-                            const exists = chatMessages.some(msg => msg.ticketId === ticket.ticketId);
-                            if (!exists) {
+                            if (!seenTicketIds.current.has(ticket.ticketId)) {
+                                seenTicketIds.current.add(ticket.ticketId);
+
                                 setChatMessages(prev => [...prev, {
                                     from: ticket.originAgent,
                                     to: agentName,
@@ -401,7 +408,7 @@ export const Canvas = () => {
         }, 3000); // Poll every 3 seconds
 
         return () => clearInterval(interval);
-    }, [nodes, chatMessages, setChatMessages]);
+    }, [nodes]);
 
     // Legacy mock conversations for fallback
     useEffect(() => {
@@ -635,12 +642,13 @@ export const Canvas = () => {
                                 setIsOrchestrating(false);
                                 setIsPaused(false);
                                 setStepMode(false);
-                                setCurrentStep(0);
+                                currentStepRef.current = 0;
                             } else {
                                 // Reset and start orchestration
                                 setChatMessages([]);
                                 setTerminalOutput([]);
-                                setCurrentStep(0);
+                                seenTicketIds.current.clear();
+                                currentStepRef.current = 0;
                                 setIsOrchestrating(true);
                             }
                         }}
@@ -699,7 +707,7 @@ export const Canvas = () => {
 
                             {stepMode && (
                                 <button
-                                    onClick={() => setCurrentStep(prev => prev + 1)}
+                                    onClick={() => { advanceStepRef.current = true; }}
                                     className="px-3 py-2 rounded-lg text-sm font-medium bg-accent-purple hover:bg-purple-600 text-white transition-colors"
                                     title="Next Step"
                                 >
