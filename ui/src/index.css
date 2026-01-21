@@ -26,3 +26,31 @@
     background-size: 40px 40px;
     background-image: radial-gradient(circle, #2A2A2E 1px, transparent 1px);
 }
+
+/* React Flow edge animations - smooth message flow */
+@keyframes flow {
+    0% {
+        stroke-dashoffset: 24;
+    }
+    100% {
+        stroke-dashoffset: 0;
+    }
+}
+
+/* Active connection visual feedback */
+.react-flow__edge.active {
+    stroke: var(--color-text-muted);
+    stroke-width: 2px;
+}
+
+.react-flow__edge.active path {
+    stroke: #10B981; /* accent-green */
+    animation: flow 1s linear infinite;
+    stroke-dasharray: 5, 5;
+}
+
+/* Hover state for connections */
+.react-flow__edge:hover path {
+    stroke: var(--color-text-secondary);
+    stroke-width: 2px;
+}
