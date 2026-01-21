@@ -4,7 +4,9 @@ import '@xyflow/react/dist/style.css';
 
 import { AgentNode } from '../components/AgentNode';
 import { ConnectionEdge } from '../components/ConnectionEdge';
-import { Plus } from 'lucide-react';
+import { ChatPanel } from '../components/ChatPanel';
+import { TerminalPanel } from '../components/TerminalPanel';
+import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon } from 'lucide-react';
 
 // Register custom node and edge types - Reference: POC Canvas.jsx:9
 const nodeTypes = { agent: AgentNode };
@@ -20,6 +22,14 @@ export const Canvas = () => {
     const contextMenuRef = useRef(null);
     const previousFocusRef = useRef(null);
     const [contextMenu, setContextMenu] = useState(null);
+
+    // Phase 3: Orchestration state
+    const [isOrchestrating, setIsOrchestrating] = useState(false);
+    const [chatMessages, setChatMessages] = useState([]);
+    const [terminalOutput, setTerminalOutput] = useState([]);
+    const [selectedAgent, setSelectedAgent] = useState(null);
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isTerminalOpen, setIsTerminalOpen] = useState(false);
 
     // Connection handler with validation - Reference: POC Canvas.jsx:22
     const onConnect = useCallback(
@@ -195,9 +205,121 @@ export const Canvas = () => {
         }
     }, [contextMenu]);
 
-    // Simulation Loop - Phase 2 requirement for "simulated agent responses"
+    // Phase 3: Load team from localStorage on mount
     useEffect(() => {
-        if (nodes.length === 0 || edges.length === 0) return;
+        const savedTeam = localStorage.getItem('kokino-team');
+        if (savedTeam) {
+            try {
+                const { nodes: savedNodes, edges: savedEdges } = JSON.parse(savedTeam);
+                if (savedNodes && savedNodes.length > 0) {
+                    setNodes(savedNodes);
+                    setEdges(savedEdges || []);
+                }
+            } catch (err) {
+                console.error('Failed to load saved team:', err);
+            }
+        }
+    }, [setNodes, setEdges]);
+
+    // Phase 3: Save team to localStorage whenever nodes/edges change
+    useEffect(() => {
+        if (nodes.length > 0 || edges.length > 0) {
+            localStorage.setItem('kokino-team', JSON.stringify({ nodes, edges }));
+        }
+    }, [nodes, edges]);
+
+    // Phase 3: Mock Orchestration Flow
+    useEffect(() => {
+        if (!isOrchestrating || nodes.length === 0) return;
+
+        const mockConversations = [
+            { from: 'Alice', to: 'Bob', content: 'Can you review the authentication module?' },
+            { from: 'Bob', to: 'Jerry', content: 'Jerry, please implement the user login endpoint' },
+            { from: 'Jerry', to: 'Bob', content: 'Endpoint implemented. Running tests...' },
+            { from: 'Jerry', content: '✓ All tests passed' },
+            { from: 'Bob', to: 'Alice', content: 'Authentication module is ready for review' },
+            { from: 'Alice', content: 'Great work team! Moving to QA phase.' }
+        ];
+
+        const mockTerminalCommands = [
+            { type: 'command', content: 'npm install express' },
+            { type: 'output', content: 'added 50 packages in 3.2s' },
+            { type: 'command', content: 'npm run test' },
+            { type: 'success', content: '✓ auth.test.js (5 tests)' },
+            { type: 'success', content: '✓ user.test.js (3 tests)' },
+            { type: 'info', content: 'Test Suites: 2 passed, 2 total' }
+        ];
+
+        let messageIndex = 0;
+        let terminalIndex = 0;
+
+        const interval = setInterval(() => {
+            // Add chat message
+            if (messageIndex < mockConversations.length) {
+                setChatMessages((prev) => [
+                    ...prev,
+                    { ...mockConversations[messageIndex], timestamp: Date.now() }
+                ]);
+                messageIndex++;
+            }
+
+            // Add terminal output
+            if (terminalIndex < mockTerminalCommands.length) {
+                setTerminalOutput((prev) => [...prev, mockTerminalCommands[terminalIndex]]);
+                terminalIndex++;
+            }
+
+            // Update node states based on conversation
+            setNodes((nds) => nds.map((n) => {
+                const name = n.data.name;
+                const statusCycle = ['idle', 'active', 'busy'];
+                const taskMessages = [
+                    'Reviewing requirements',
+                    'Writing code',
+                    'Running tests',
+                    'Waiting for feedback'
+                ];
+
+                if (n.data.status === 'offline') return n;
+
+                return {
+                    ...n,
+                    data: {
+                        ...n.data,
+                        status: statusCycle[Math.floor(Math.random() * statusCycle.length)],
+                        task: taskMessages[Math.floor(Math.random() * taskMessages.length)]
+                    }
+                };
+            }));
+
+            // Activate random edge (message flow)
+            if (edges.length > 0) {
+                const randomEdge = edges[Math.floor(Math.random() * edges.length)];
+                setEdges((eds) => eds.map((e) => {
+                    if (e.id === randomEdge.id) {
+                        setTimeout(() => {
+                            setEdges((eds2) => eds2.map((e2) =>
+                                e2.id === e.id ? { ...e2, className: 'react-flow__edge' } : e2
+                            ));
+                        }, 2000);
+                        return { ...e, className: 'react-flow__edge active' };
+                    }
+                    return e;
+                }));
+            }
+
+            // Stop after all messages sent
+            if (messageIndex >= mockConversations.length && terminalIndex >= mockTerminalCommands.length) {
+                setIsOrchestrating(false);
+            }
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, [isOrchestrating, nodes, edges, setNodes, setEdges]);
+
+    // Simulation Loop - Phase 2 requirement (now only runs when NOT orchestrating)
+    useEffect(() => {
+        if (isOrchestrating || nodes.length === 0 || edges.length === 0) return;
 
         const interval = setInterval(() => {
             // Random agent status changes
@@ -270,6 +392,68 @@ export const Canvas = () => {
                         maskColor="rgba(18, 18, 20, 0.8)"
                     />
                 </ReactFlow>
+
+                {/* Top-right Controls - Phase 3: Start/Stop & Panel Toggles */}
+                <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
+                    <button
+                        onClick={() => {
+                            if (isOrchestrating) {
+                                setIsOrchestrating(false);
+                            } else {
+                                // Reset and start orchestration
+                                setChatMessages([]);
+                                setTerminalOutput([]);
+                                setIsOrchestrating(true);
+                                setIsChatOpen(true);
+                                setIsTerminalOpen(true);
+                            }
+                        }}
+                        className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                            isOrchestrating
+                                ? 'bg-red-500 hover:bg-red-600 text-white'
+                                : 'bg-accent-purple hover:bg-purple-600 text-white'
+                        }`}
+                        disabled={nodes.length === 0}
+                    >
+                        {isOrchestrating ? (
+                            <>
+                                <Square size={16} fill="currentColor" />
+                                Stop Team
+                            </>
+                        ) : (
+                            <>
+                                <Play size={16} fill="currentColor" />
+                                Start Team
+                            </>
+                        )}
+                    </button>
+
+                    <button
+                        onClick={() => setIsChatOpen(!isChatOpen)}
+                        className={`p-2 rounded-lg transition-colors ${
+                            isChatOpen
+                                ? 'bg-accent-purple text-white'
+                                : 'bg-surface border border-border text-text-secondary hover:text-text-primary'
+                        }`}
+                        aria-label="Toggle chat panel"
+                        title="Team Chat"
+                    >
+                        <MessageSquare size={20} />
+                    </button>
+
+                    <button
+                        onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+                        className={`p-2 rounded-lg transition-colors ${
+                            isTerminalOpen
+                                ? 'bg-accent-green text-white'
+                                : 'bg-surface border border-border text-text-secondary hover:text-text-primary'
+                        }`}
+                        aria-label="Toggle terminal panel"
+                        title="Terminal Output"
+                    >
+                        <TerminalIcon size={20} />
+                    </button>
+                </div>
 
                 {/* Floating Agent Library Panel - Reference: POC Canvas.jsx:223-242 */}
                 <div className="absolute top-6 left-6 flex flex-col gap-4 z-10">
@@ -376,6 +560,21 @@ export const Canvas = () => {
                         )}
                     </div>
                 )}
+
+                {/* Phase 3: Chat Panel */}
+                <ChatPanel
+                    messages={chatMessages}
+                    isOpen={isChatOpen}
+                    onClose={() => setIsChatOpen(false)}
+                />
+
+                {/* Phase 3: Terminal Panel */}
+                <TerminalPanel
+                    agentName={selectedAgent || 'team'}
+                    output={terminalOutput}
+                    isOpen={isTerminalOpen}
+                    onClose={() => setIsTerminalOpen(false)}
+                />
             </div>
         </div>
     );
