@@ -105,15 +105,17 @@ export const Canvas = () => {
         setNodes((nds) => nds.concat(newNode));
 
         // Phase 4: Register agent with broker
+        console.log(`[canvas] Attempting to register agent ${name} with broker...`);
+
         try {
-            await broker.registerAgent(name, {
+            const result = await broker.registerAgent(name, {
                 type: 'ui-agent',
                 metadata: { role, nodeId: id },
                 heartbeatIntervalMs: 30000
             });
-            console.log(`[canvas] Registered agent ${name} with broker`);
+            console.log(`[canvas] ✓ Registered agent ${name} with broker:`, result);
         } catch (error) {
-            console.error(`[canvas] Failed to register agent ${name}:`, error);
+            console.error(`[canvas] ✗ Failed to register agent ${name}:`, error);
         }
     };
 
