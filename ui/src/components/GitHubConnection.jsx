@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Github, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import github from '../services/github';
+import { useToast } from '../contexts/ToastContext';
 
 /**
  * GitHub Connection Component (Phase 9)
@@ -11,6 +12,7 @@ export const GitHubConnection = () => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { success, error: showError } = useToast();
 
   // Check authentication status on mount
   useEffect(() => {
@@ -26,13 +28,14 @@ export const GitHubConnection = () => {
       } catch (err) {
         console.error('[GitHubConnection] Error checking auth:', err);
         setError(err.message);
+        showError('Failed to check GitHub authentication');
       } finally {
         setIsLoading(false);
       }
     };
 
     checkAuth();
-  }, []);
+  }, [showError]);
 
   const handleConnect = () => {
     try {
@@ -40,6 +43,7 @@ export const GitHubConnection = () => {
     } catch (err) {
       console.error('[GitHubConnection] OAuth initiation failed:', err);
       setError(err.message);
+      showError('Failed to initiate GitHub OAuth');
     }
   };
 
@@ -47,6 +51,7 @@ export const GitHubConnection = () => {
     github.disconnect();
     setIsAuthenticated(false);
     setUser(null);
+    success('Disconnected from GitHub');
   };
 
   if (isLoading) {

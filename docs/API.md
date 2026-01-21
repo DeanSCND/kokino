@@ -72,12 +72,11 @@ DELETE /agents/:agentId
 ### Send Message
 
 ```http
-POST /api/messages/send
+POST /agents/:agentId/send
 Content-Type: application/json
 
 {
   "from": "Alice",
-  "to": "Bob",
   "content": "Please review the code",
   "metadata": {
     "priority": "high",
@@ -94,6 +93,8 @@ Content-Type: application/json
   "expiresAt": "2026-01-21T13:00:00.000Z"
 }
 ```
+
+**Note:** The `agentId` in the URL is the recipient (to), and `from` is in the request body.
 
 ### Get Message History
 
@@ -176,10 +177,11 @@ GET /agents/:agentId/tickets/pending
 ### Reply to Ticket
 
 ```http
-POST /api/tickets/:ticketId/reply
+POST /replies
 Content-Type: application/json
 
 {
+  "ticketId": "abc123",
   "agentId": "Bob",
   "response": "Code review complete. Looks good!"
 }
@@ -189,10 +191,36 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "ticketId": "abc123",
-  "status": "resolved"
+  "ticketId": "abc123"
 }
 ```
+
+### Get Reply Status
+
+```http
+GET /replies/:ticketId
+```
+
+**Response:**
+```json
+{
+  "ticketId": "abc123",
+  "status": "resolved",
+  "response": "Code review complete. Looks good!",
+  "respondedAt": "2026-01-21T12:05:00.000Z"
+}
+```
+
+### Wait for Reply (Long-Poll)
+
+```http
+GET /replies/:ticketId/wait?timeout=30000
+```
+
+Blocks until reply is available or timeout expires.
+
+**Query Parameters:**
+- `timeout` (optional): Maximum wait time in milliseconds (default: 30000)
 
 ---
 
@@ -393,17 +421,20 @@ await axios.post('http://127.0.0.1:5050/agents/register', {
   capabilities: ['code', 'test']
 });
 
-// Send message
-const response = await axios.post('http://127.0.0.1:5050/api/messages/send', {
+// Send message to Bob
+const response = await axios.post('http://127.0.0.1:5050/agents/Bob/send', {
   from: 'Alice',
-  to: 'Bob',
   content: 'Please review the code',
   metadata: { priority: 'high' }
 });
 
 console.log('Ticket ID:', response.data.ticketId);
 
-// Poll for responses
+// Wait for response (long-poll)
+const reply = await axios.get(`http://127.0.0.1:5050/replies/${response.data.ticketId}/wait`);
+console.log('Reply:', reply.data.response);
+
+// Or poll for all pending tickets
 const tickets = await axios.get('http://127.0.0.1:5050/agents/Alice/tickets/pending');
 console.log('Pending tickets:', tickets.data);
 ```
@@ -420,15 +451,19 @@ requests.post('http://127.0.0.1:5050/agents/register', json={
     'capabilities': ['code', 'test']
 })
 
-# Send message
-response = requests.post('http://127.0.0.1:5050/api/messages/send', json={
+# Send message to Bob
+response = requests.post('http://127.0.0.1:5050/agents/Bob/send', json={
     'from': 'Alice',
-    'to': 'Bob',
     'content': 'Please review the code',
     'metadata': {'priority': 'high'}
 })
 
-print('Ticket ID:', response.json()['ticketId'])
+ticket_id = response.json()['ticketId']
+print('Ticket ID:', ticket_id)
+
+# Wait for reply
+reply = requests.get(f'http://127.0.0.1:5050/replies/{ticket_id}/wait')
+print('Reply:', reply.json()['response'])
 ```
 
 ---

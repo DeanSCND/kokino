@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, GitBranch, GitPullRequest, AlertCircle, Loader2, FileCode, CheckCircle2 } from 'lucide-react';
 import github from '../services/github';
 import statusSync from '../utils/statusSync';
+import { useToast } from '../contexts/ToastContext';
 
 /**
  * Create Pull Request Dialog (Phase 9)
@@ -21,6 +22,7 @@ export const CreatePRDialog = ({ onClose, agentName, initialRepo, initialFiles =
   const [error, setError] = useState(null);
   const [step, setStep] = useState('form'); // 'form' | 'creating' | 'success'
   const [createdPR, setCreatedPR] = useState(null);
+  const { success, error: showError } = useToast();
 
   // Load repositories on mount
   useEffect(() => {
@@ -116,6 +118,7 @@ export const CreatePRDialog = ({ onClose, agentName, initialRepo, initialFiles =
       console.log('[CreatePRDialog] Created PR:', pr);
       setCreatedPR(pr);
       setStep('success');
+      success(`Pull request #${pr.number} created successfully!`);
 
       // Notify status sync
       await statusSync.notifyPRCreated(agentName, pr.number, pr.html_url);
@@ -123,6 +126,7 @@ export const CreatePRDialog = ({ onClose, agentName, initialRepo, initialFiles =
     } catch (err) {
       console.error('[CreatePRDialog] Failed to create PR:', err);
       setError(err.message);
+      showError(`Failed to create pull request: ${err.message}`);
       setStep('form');
     } finally {
       setIsLoading(false);
