@@ -17,6 +17,8 @@ export const Canvas = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const reactFlowWrapper = useRef(null);
+    const contextMenuRef = useRef(null);
+    const previousFocusRef = useRef(null);
     const [contextMenu, setContextMenu] = useState(null);
 
     // Connection handler with validation - Reference: POC Canvas.jsx:22
@@ -95,6 +97,9 @@ export const Canvas = () => {
     const onNodeContextMenu = useCallback(
         (event, node) => {
             event.preventDefault();
+            // Store currently focused element to return focus later
+            previousFocusRef.current = document.activeElement;
+
             const pane = reactFlowWrapper.current.getBoundingClientRect();
 
             setContextMenu({
@@ -111,6 +116,9 @@ export const Canvas = () => {
     const onEdgeContextMenu = useCallback(
         (event, edge) => {
             event.preventDefault();
+            // Store currently focused element to return focus later
+            previousFocusRef.current = document.activeElement;
+
             const pane = reactFlowWrapper.current.getBoundingClientRect();
 
             setContextMenu({
@@ -124,14 +132,22 @@ export const Canvas = () => {
         []
     );
 
-    const onPaneClick = useCallback(() => setContextMenu(null), []);
+    const closeContextMenu = useCallback(() => {
+        setContextMenu(null);
+        // Return focus to previously focused element
+        if (previousFocusRef.current) {
+            previousFocusRef.current.focus();
+        }
+    }, []);
+
+    const onPaneClick = useCallback(() => closeContextMenu(), [closeContextMenu]);
 
     // Mock handlers for Phase 2 - Real implementation in Phase 6 (terminals) and Phase 5 (backend)
     const handleConnect = () => {
         if (!contextMenu?.data?.name) return;
         // Phase 6 will implement: setTerminalAgent(contextMenu.data.name);
         alert(`Terminal connection for ${contextMenu.data.name} will be implemented in Phase 6`);
-        setContextMenu(null);
+        closeContextMenu();
     };
 
     const handleStop = () => {
@@ -146,7 +162,7 @@ export const Canvas = () => {
             return n;
         }));
 
-        setContextMenu(null);
+        closeContextMenu();
     };
 
     const handleSetPurpose = (purpose) => {
@@ -159,15 +175,25 @@ export const Canvas = () => {
             return e;
         }));
 
-        setContextMenu(null);
+        closeContextMenu();
     };
 
     const handleDeleteConnection = () => {
         if (contextMenu?.type !== 'edge') return;
 
         setEdges((eds) => eds.filter((e) => e.id !== contextMenu.id));
-        setContextMenu(null);
+        closeContextMenu();
     };
+
+    // Focus management - Move focus into context menu when it opens
+    useEffect(() => {
+        if (contextMenu && contextMenuRef.current) {
+            const firstButton = contextMenuRef.current.querySelector('button');
+            if (firstButton) {
+                firstButton.focus();
+            }
+        }
+    }, [contextMenu]);
 
     // Simulation Loop - Phase 2 requirement for "simulated agent responses"
     useEffect(() => {
@@ -277,10 +303,11 @@ export const Canvas = () => {
                 {/* Context Menu - Reference: POC Canvas.jsx:269-287 */}
                 {contextMenu && (
                     <div
+                        ref={contextMenuRef}
                         className="absolute z-50 bg-[#18181b] border border-zinc-700 rounded-lg shadow-xl py-1 w-48 animate-in fade-in zoom-in duration-100 origin-top-left"
                         style={{ top: contextMenu.top, left: contextMenu.left }}
                         role="menu"
-                        onKeyDown={(e) => e.key === 'Escape' && setContextMenu(null)}
+                        onKeyDown={(e) => e.key === 'Escape' && closeContextMenu()}
                     >
                         {contextMenu.type === 'node' ? (
                             <>
