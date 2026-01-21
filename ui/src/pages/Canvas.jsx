@@ -16,8 +16,15 @@ import { LoopAlertManager } from '../components/LoopAlert';
 import { LoopDetector } from '../utils/LoopDetector';
 import { EscalationTracker } from '../utils/EscalationTracker';
 import { GraphEnforcer } from '../utils/GraphEnforcer';
-import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle, Library, Clock } from 'lucide-react';
+import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle, Library, Clock, Github } from 'lucide-react';
 import broker from '../services/broker';
+import { GitHubIssues } from '../components/GitHubIssues';
+import { CreatePRDialog } from '../components/CreatePRDialog';
+import { BranchManager } from '../components/BranchManager';
+import { CommitQueueViewer } from '../components/CommitQueueViewer';
+import { StageCommitDialog } from '../components/StageCommitDialog';
+import { generateTeamFromIssue } from '../utils/teamSpawner';
+import statusSync from '../utils/statusSync';
 
 // Register custom node and edge types - Reference: POC Canvas.jsx:9
 const nodeTypes = { agent: AgentNode };
@@ -68,6 +75,21 @@ export const Canvas = () => {
 
     // Phase 8: Timeline viewer state
     const [showTimeline, setShowTimeline] = useState(false);
+
+    // Phase 9: GitHub issues state
+    const [showGitHubIssues, setShowGitHubIssues] = useState(false);
+
+    // Phase 9: PR creation state
+    const [showCreatePR, setShowCreatePR] = useState(false);
+    const [prAgentName, setPRAgentName] = useState(null);
+
+    // Phase 9: Branch manager state
+    const [showBranchManager, setShowBranchManager] = useState(false);
+
+    // Phase 9: Commit queue state
+    const [showCommitQueue, setShowCommitQueue] = useState(false);
+    const [showStageCommit, setShowStageCommit] = useState(false);
+    const [stageCommitAgent, setStageCommitAgent] = useState(null);
 
     // Phase 8: Loop detection state
     const loopDetectorRef = useRef(null);
@@ -1130,6 +1152,41 @@ export const Canvas = () => {
                             Message Timeline
                         </button>
 
+                        {/* Phase 9: GitHub Issues Button */}
+                        <button
+                            onClick={() => setShowGitHubIssues(true)}
+                            className="w-full px-3 py-2 bg-accent-green hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                        >
+                            <Github size={16} />
+                            GitHub Issues
+                        </button>
+
+                        {/* Phase 9: Branch Manager Button */}
+                        <button
+                            onClick={() => setShowBranchManager(true)}
+                            className="w-full px-3 py-2 bg-surface-hover hover:bg-surface border border-border text-text-primary rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="6" y1="3" x2="6" y2="15"></line>
+                                <circle cx="18" cy="6" r="3"></circle>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <path d="M18 9a9 9 0 0 1-9 9"></path>
+                            </svg>
+                            Branches
+                        </button>
+
+                        {/* Phase 9: Commit Queue Button */}
+                        <button
+                            onClick={() => setShowCommitQueue(true)}
+                            className="w-full px-3 py-2 bg-surface-hover hover:bg-surface border border-border text-text-primary rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M3 12h6m6 0h6M12 3v6m0 6v6"></path>
+                            </svg>
+                            Commit Queue
+                        </button>
+
                         <div className="grid grid-cols-2 gap-2">
                             {['Product Manager', 'Tech Lead', 'Frontend', 'Backend', 'QA', 'Droid', 'Gemini'].map((role) => (
                                 <button
@@ -1210,6 +1267,31 @@ export const Canvas = () => {
                                     <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
                                     Restart Agent
                                 </button>
+                                <div className="border-t border-zinc-800 my-1"></div>
+                                <button
+                                    onClick={() => {
+                                        setStageCommitAgent(contextMenu.data.name);
+                                        setShowStageCommit(true);
+                                        closeContextMenu();
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                                    role="menuitem"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                                    Stage Commit
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setPRAgentName(contextMenu.data.name);
+                                        setShowCreatePR(true);
+                                        closeContextMenu();
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-accent-purple hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                                    role="menuitem"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-accent-purple"></span>
+                                    Create Pull Request
+                                </button>
                             </>
                         ) : (
                             <>
@@ -1277,6 +1359,84 @@ export const Canvas = () => {
                 {showTimeline && (
                     <TimelineViewer
                         onClose={() => setShowTimeline(false)}
+                    />
+                )}
+
+                {/* Phase 9: GitHub Issues Modal */}
+                {showGitHubIssues && (
+                    <GitHubIssues
+                        onClose={() => setShowGitHubIssues(false)}
+                        onSpawnTeam={async (issue) => {
+                            console.log('[Canvas] Spawning team from issue:', issue);
+
+                            // Generate team template from issue labels
+                            const teamTemplate = generateTeamFromIssue(issue);
+                            console.log('[Canvas] Generated team template:', teamTemplate);
+
+                            // Close GitHub issues modal
+                            setShowGitHubIssues(false);
+
+                            // Spawn the team using existing spawnTemplate function
+                            await spawnTemplate(teamTemplate);
+
+                            // Enable status sync for this issue
+                            const repoUrl = issue.repository_url;
+                            const [owner, repo] = repoUrl.split('/').slice(-2);
+                            statusSync.enable(owner, repo, issue.number);
+
+                            // Notify GitHub of team spawn
+                            await statusSync.notifyTeamSpawned(
+                                teamTemplate.name,
+                                teamTemplate.agents,
+                                issue.number
+                            );
+
+                            // Add label to issue
+                            await statusSync.updateIssueLabel('in-progress');
+
+                            // Add system message to chat
+                            setChatMessages(prev => [...prev, {
+                                from: 'System',
+                                content: `🚀 Spawned team for GitHub issue #${issue.number}: "${issue.title}" (status sync enabled)`,
+                                timestamp: Date.now()
+                            }]);
+                        }}
+                    />
+                )}
+
+                {/* Phase 9: Create PR Dialog */}
+                {showCreatePR && (
+                    <CreatePRDialog
+                        onClose={() => {
+                            setShowCreatePR(false);
+                            setPRAgentName(null);
+                        }}
+                        agentName={prAgentName}
+                    />
+                )}
+
+                {/* Phase 9: Branch Manager */}
+                {showBranchManager && (
+                    <BranchManager
+                        onClose={() => setShowBranchManager(false)}
+                    />
+                )}
+
+                {/* Phase 9: Commit Queue Viewer */}
+                {showCommitQueue && (
+                    <CommitQueueViewer
+                        onClose={() => setShowCommitQueue(false)}
+                    />
+                )}
+
+                {/* Phase 9: Stage Commit Dialog */}
+                {showStageCommit && (
+                    <StageCommitDialog
+                        onClose={() => {
+                            setShowStageCommit(false);
+                            setStageCommitAgent(null);
+                        }}
+                        agentName={stageCommitAgent}
                     />
                 )}
 

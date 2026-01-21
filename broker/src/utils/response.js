@@ -12,15 +12,21 @@ export function jsonResponse(res, statusCode, body) {
   res.end(payload);
 }
 
-export function parseJson(req) {
+export function parseJson(req, includeRaw = false) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     req.on('data', chunk => chunks.push(chunk));
     req.on('end', () => {
       try {
-        const raw = Buffer.concat(chunks).toString('utf8') || '{}';
+        const rawBuffer = Buffer.concat(chunks);
+        const raw = rawBuffer.toString('utf8') || '{}';
         const data = JSON.parse(raw);
-        resolve(data);
+
+        if (includeRaw) {
+          resolve({ data, raw, rawBuffer });
+        } else {
+          resolve(data);
+        }
       } catch (error) {
         reject(error);
       }

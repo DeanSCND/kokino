@@ -8,6 +8,7 @@ import { TicketStore } from './models/TicketStore.js';
 import { MessageRepository } from './db/MessageRepository.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createMessageRoutes } from './routes/messages.js';
+import { createGitHubRoutes } from './routes/github.js';
 import { jsonResponse, handleCors } from './utils/response.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
@@ -24,6 +25,7 @@ const messageRepository = new MessageRepository();
 // Create route handlers
 const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository);
 const messageRoutes = createMessageRoutes(ticketStore, messageRepository);
+const githubRoutes = createGitHubRoutes();
 
 // Cleanup old tickets every minute
 setInterval(() => {
@@ -150,6 +152,16 @@ const server = http.createServer(async (req, res) => {
     if (agentMessagesMatch && method === 'GET') {
       const agentId = agentMessagesMatch[1];
       return await messageRoutes.getAgentMessages(req, res, agentId);
+    }
+
+    // Phase 9: GitHub OAuth
+    if (pathname === '/api/github/oauth' && method === 'POST') {
+      return await githubRoutes.exchangeOAuthCode(req, res);
+    }
+
+    // Phase 9: GitHub Webhook
+    if (pathname === '/api/github/webhook' && method === 'POST') {
+      return await githubRoutes.handleWebhook(req, res);
     }
 
     // 404

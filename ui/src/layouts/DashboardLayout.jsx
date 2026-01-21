@@ -1,5 +1,6 @@
 import React from 'react';
 import { LayoutDashboard, GitMerge, Terminal, MessageSquare, Users, Settings } from 'lucide-react';
+import { GitHubConnection } from '../components/GitHubConnection';
 
 const SidebarItem = ({ icon: Icon, active, label }) => (
     <button
@@ -46,8 +47,7 @@ export const DashboardLayout = ({ children }) => {
                         <span>Overview</span>
                     </div>
                     <div className="flex items-center gap-4">
-                        {/* Placeholder for header actions */}
-                        <div className="h-8 w-8 rounded-full bg-surface-hover border border-border"></div>
+                        <GitHubConnection />
                     </div>
                 </header>
 
