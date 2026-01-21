@@ -21,6 +21,7 @@ export class AgentRepository {
     this.getByTypeStmt = db.prepare('SELECT * FROM agents WHERE type = ?');
     this.deleteStmt = db.prepare('DELETE FROM agents WHERE agent_id = ?');
     this.updateHeartbeatStmt = db.prepare('UPDATE agents SET last_heartbeat = ?, updated_at = ? WHERE agent_id = ?');
+    this.updateStatusStmt = db.prepare('UPDATE agents SET status = ?, updated_at = ? WHERE agent_id = ?');
   }
 
   save(record) {
@@ -60,6 +61,12 @@ export class AgentRepository {
   updateHeartbeat(agentId) {
     const now = new Date().toISOString();
     const result = this.updateHeartbeatStmt.run(now, now, agentId);
+    return result.changes > 0;
+  }
+
+  updateStatus(agentId, status) {
+    const now = new Date().toISOString();
+    const result = this.updateStatusStmt.run(status, now, agentId);
     return result.changes > 0;
   }
 

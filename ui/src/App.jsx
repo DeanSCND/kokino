@@ -1,12 +1,15 @@
 import React from 'react';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { Canvas } from './pages/Canvas';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
   return (
-    <DashboardLayout>
-      <Canvas />
-    </DashboardLayout>
+    <ErrorBoundary>
+      <DashboardLayout>
+        <Canvas />
+      </DashboardLayout>
+    </ErrorBoundary>
   );
 }
 

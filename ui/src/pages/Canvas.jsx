@@ -8,9 +8,15 @@ import { ChatPanel } from '../components/ChatPanel';
 import { TerminalPanel } from '../components/TerminalPanel';
 import { AgentDashboard } from '../components/AgentDashboard';
 import { BrokerStatus } from '../components/BrokerStatus';
+import { PerformanceMetrics } from '../components/PerformanceMetrics';
 import { TerminalModal } from '../components/TerminalModal';
 import { TemplateLibrary } from '../components/TemplateLibrary';
-import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle, Library } from 'lucide-react';
+import { TimelineViewer } from '../components/TimelineViewer';
+import { LoopAlertManager } from '../components/LoopAlert';
+import { LoopDetector } from '../utils/LoopDetector';
+import { EscalationTracker } from '../utils/EscalationTracker';
+import { GraphEnforcer } from '../utils/GraphEnforcer';
+import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle, Library, Clock } from 'lucide-react';
 import broker from '../services/broker';
 
 // Register custom node and edge types - Reference: POC Canvas.jsx:9
@@ -59,6 +65,75 @@ export const Canvas = () => {
 
     // Phase 7: Template library state
     const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+
+    // Phase 8: Timeline viewer state
+    const [showTimeline, setShowTimeline] = useState(false);
+
+    // Phase 8: Loop detection state
+    const loopDetectorRef = useRef(null);
+    const [detectedLoops, setDetectedLoops] = useState([]);
+
+    // Initialize loop detector
+    if (!loopDetectorRef.current) {
+        loopDetectorRef.current = new LoopDetector({
+            maxPathLength: 10,
+            loopThreshold: 3,
+            windowSize: 50
+        });
+
+        // Listen for loop detection events
+        loopDetectorRef.current.onLoopDetected((loop) => {
+            console.warn('[LoopDetector] Loop detected:', loop);
+            setDetectedLoops(prev => [...prev, loop]);
+        });
+    }
+
+    // Phase 8: Escalation tracking state
+    const escalationTrackerRef = useRef(null);
+
+    // Initialize escalation tracker
+    if (!escalationTrackerRef.current) {
+        escalationTrackerRef.current = new EscalationTracker();
+
+        // Listen for escalation changes
+        escalationTrackerRef.current.onChange((agent, escalation) => {
+            console.log('[EscalationTracker] Escalation change:', agent, escalation);
+
+            // Update node data with escalation
+            setNodes(nds => nds.map(node => {
+                if (node.data.name === agent) {
+                    return {
+                        ...node,
+                        data: {
+                            ...node.data,
+                            escalation: escalation
+                        }
+                    };
+                }
+                return node;
+            }));
+        });
+    }
+
+    // Phase 8: Graph enforcement state
+    const graphEnforcerRef = useRef(null);
+
+    // Initialize graph enforcer
+    if (!graphEnforcerRef.current) {
+        graphEnforcerRef.current = new GraphEnforcer(nodes, edges);
+
+        // Listen for graph violations
+        graphEnforcerRef.current.onViolation((violation) => {
+            console.warn('[GraphEnforcer] Communication violation:', violation);
+
+            // Show violation in chat
+            setChatMessages(prev => [...prev, {
+                from: 'System',
+                content: `⚠️ Communication blocked: ${violation.from} cannot send to ${violation.to}. ${violation.reason}`,
+                timestamp: violation.timestamp
+            }]);
+        });
+    }
 
     // Connection handler with validation - Reference: POC Canvas.jsx:22
     const onConnect = useCallback(
@@ -434,6 +509,35 @@ export const Canvas = () => {
         closeContextMenu();
     };
 
+    // Phase 8: Loop detection handlers
+    const handleBreakLoop = (loop) => {
+        console.log('[LoopDetector] Breaking loop:', loop);
+
+        // Stop orchestration to break the loop
+        setIsOrchestrating(false);
+        setIsPaused(false);
+        setStepMode(false);
+
+        // Reset loop detector
+        if (loopDetectorRef.current) {
+            loopDetectorRef.current.reset();
+        }
+
+        // Clear detected loops
+        setDetectedLoops([]);
+
+        // Notify user
+        setChatMessages(prev => [...prev, {
+            from: 'System',
+            content: `⚠️ Loop detected and broken: ${loop.pattern.join(' → ')}`,
+            timestamp: Date.now()
+        }]);
+    };
+
+    const handleDismissLoop = (loopIndex) => {
+        setDetectedLoops(prev => prev.filter((_, i) => i !== loopIndex));
+    };
+
     // Focus management - Move focus into context menu when it opens
     useEffect(() => {
         if (contextMenu && contextMenuRef.current) {
@@ -468,6 +572,13 @@ export const Canvas = () => {
         } else {
             // Clear localStorage when canvas is empty
             localStorage.removeItem('kokino-team-v1');
+        }
+    }, [nodes, edges]);
+
+    // Phase 8: Update graph enforcer when topology changes
+    useEffect(() => {
+        if (graphEnforcerRef.current) {
+            graphEnforcerRef.current.updateGraph(nodes, edges);
         }
     }, [nodes, edges]);
 
@@ -511,6 +622,15 @@ export const Canvas = () => {
 
                 // Send message through broker
                 if (msg.to) {
+                    // Phase 8: Validate communication path before sending
+                    if (graphEnforcerRef.current) {
+                        const validation = graphEnforcerRef.current.validateMessage(msg.from, msg.to);
+                        if (!validation.valid) {
+                            console.warn(`[orchestration] Blocked: ${msg.from} → ${msg.to} - ${validation.reason}`);
+                            continue; // Skip this message
+                        }
+                    }
+
                     try {
                         const result = await broker.sendMessage(msg.to, {
                             payload: msg.content,
@@ -521,6 +641,37 @@ export const Canvas = () => {
 
                         // Add to chat display
                         setChatMessages(prev => [...prev, { ...msg, timestamp: Date.now(), ticketId: result.ticketId }]);
+
+                        // Phase 8: Track message for loop detection
+                        if (loopDetectorRef.current) {
+                            loopDetectorRef.current.addMessage(msg.from, msg.to, Date.now());
+                        }
+
+                        // Phase 8: Track message for escalation detection
+                        if (escalationTrackerRef.current) {
+                            escalationTrackerRef.current.trackMessageSent(msg.to, msg.from, Date.now());
+                            // Simulate receiving message after a delay (in real scenario, agent would report back)
+                            setTimeout(() => {
+                                if (escalationTrackerRef.current) {
+                                    escalationTrackerRef.current.trackMessageReceived(msg.to);
+                                }
+                            }, 2000);
+                        }
+
+                        // Phase 8: Trigger message flow animation
+                        const fromNode = nodes.find(n => n.data.name === msg.from);
+                        const toNode = nodes.find(n => n.data.name === msg.to);
+                        if (fromNode && toNode) {
+                            const edge = edges.find(e =>
+                                (e.source === fromNode.id && e.target === toNode.id) ||
+                                (e.source === toNode.id && e.target === fromNode.id) // bidirectional
+                            );
+                            if (edge) {
+                                window.dispatchEvent(new CustomEvent('messageFlow', {
+                                    detail: { edgeId: edge.id, from: msg.from, to: msg.to }
+                                }));
+                            }
+                        }
 
                     } catch (error) {
                         console.error('[orchestration] Failed to send message:', error);
@@ -808,7 +959,16 @@ export const Canvas = () => {
                         <TerminalPanel agentName={selectedAgent} output={terminalOutput} />
                     </>
                 ) : (
-                    <AgentDashboard />
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {/* Phase 8: Performance Metrics Dashboard */}
+                        <PerformanceMetrics
+                            messageHistory={chatMessages}
+                            activeAgents={nodes.filter(n => n.data.status === 'online').length}
+                            loopDetector={loopDetectorRef.current}
+                            escalationTracker={escalationTrackerRef.current}
+                        />
+                        <AgentDashboard />
+                    </div>
                 )}
             </aside>
 
@@ -961,6 +1121,15 @@ export const Canvas = () => {
                             Team Templates
                         </button>
 
+                        {/* Phase 8: Timeline Button */}
+                        <button
+                            onClick={() => setShowTimeline(true)}
+                            className="w-full px-3 py-2 bg-accent-blue hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                        >
+                            <Clock size={16} />
+                            Message Timeline
+                        </button>
+
                         <div className="grid grid-cols-2 gap-2">
                             {['Product Manager', 'Tech Lead', 'Frontend', 'Backend', 'QA', 'Droid', 'Gemini'].map((role) => (
                                 <button
@@ -1103,6 +1272,20 @@ export const Canvas = () => {
                         onSelectTemplate={spawnTemplate}
                     />
                 )}
+
+                {/* Phase 8: Timeline Viewer Modal */}
+                {showTimeline && (
+                    <TimelineViewer
+                        onClose={() => setShowTimeline(false)}
+                    />
+                )}
+
+                {/* Phase 8: Loop Detection Alerts */}
+                <LoopAlertManager
+                    loops={detectedLoops}
+                    onDismiss={handleDismissLoop}
+                    onBreakLoop={handleBreakLoop}
+                />
             </div>
         </div>
     );

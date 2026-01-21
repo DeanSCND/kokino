@@ -6,28 +6,60 @@ const BROKER_URL = import.meta.env.VITE_BROKER_URL || 'http://127.0.0.1:5050';
 class BrokerClient {
   constructor(baseUrl = BROKER_URL) {
     this.baseUrl = baseUrl;
+    this.maxRetries = 3;
+    this.retryDelay = 1000; // ms
   }
 
   async request(path, options = {}) {
     const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
+    const { retries = this.maxRetries, noRetry = false } = options;
+
+    let lastError;
+    const attemptCount = noRetry ? 1 : retries + 1;
+
+    for (let attempt = 0; attempt < attemptCount; attempt++) {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+          },
+          signal: options.signal || AbortSignal.timeout(options.timeout || 10000)
+        });
+
+        if (!response.ok && response.status !== 202 && response.status !== 204) {
+          const error = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(error.error || `HTTP ${response.status}`);
+        }
+
+        if (response.status === 204) {
+          return null;
+        }
+
+        return response.json();
+      } catch (err) {
+        lastError = err;
+
+        // Don't retry on abort/timeout or if this is the last attempt
+        if (err.name === 'AbortError' || err.name === 'TimeoutError' || attempt === attemptCount - 1) {
+          break;
+        }
+
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = this.retryDelay * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
-    });
-
-    if (!response.ok && response.status !== 202 && response.status !== 204) {
-      const error = await response.json().catch(() => ({ error: response.statusText }));
-      throw new Error(error.error || `HTTP ${response.status}`);
     }
 
-    if (response.status === 204) {
-      return null;
+    // Enhance error message with connection context
+    if (lastError.name === 'TypeError' || lastError.message.includes('fetch')) {
+      throw new Error('Broker unreachable - check if broker is running');
     }
-
-    return response.json();
+    if (lastError.name === 'AbortError' || lastError.name === 'TimeoutError') {
+      throw new Error('Request timeout - broker may be overloaded');
+    }
+    throw lastError;
   }
 
   // Agent Management
@@ -78,6 +110,20 @@ class BrokerClient {
 
   async getPendingTickets(agentId) {
     return this.request(`/agents/${agentId}/tickets/pending`);
+  }
+
+  // Lifecycle
+
+  async startAgent(agentId) {
+    return this.request(`/agents/${agentId}/start`, { method: 'POST' });
+  }
+
+  async stopAgent(agentId) {
+    return this.request(`/agents/${agentId}/stop`, { method: 'POST' });
+  }
+
+  async restartAgent(agentId) {
+    return this.request(`/agents/${agentId}/restart`, { method: 'POST' });
   }
 
   // System

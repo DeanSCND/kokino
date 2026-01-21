@@ -52,6 +52,39 @@ export class AgentRegistry {
     return existed;
   }
 
+  // Lifecycle methods
+  start(agentId) {
+    const updated = this.repo.updateStatus(agentId, 'online');
+    if (updated) {
+      console.log(`[registry] Started agent: ${agentId}`);
+      return this.repo.get(agentId);
+    }
+    return null;
+  }
+
+  stop(agentId) {
+    const updated = this.repo.updateStatus(agentId, 'offline');
+    if (updated) {
+      console.log(`[registry] Stopped agent: ${agentId}`);
+      return this.repo.get(agentId);
+    }
+    return null;
+  }
+
+  restart(agentId) {
+    // First stop, then start
+    const stopped = this.repo.updateStatus(agentId, 'offline');
+    if (stopped) {
+      // Small delay to simulate restart
+      setTimeout(() => {
+        this.repo.updateStatus(agentId, 'online');
+        console.log(`[registry] Restarted agent: ${agentId}`);
+      }, 100);
+      return this.repo.get(agentId);
+    }
+    return null;
+  }
+
   size() {
     return this.repo.getAll().length;
   }

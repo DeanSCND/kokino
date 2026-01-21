@@ -51,12 +51,34 @@ db.exec(`
   )
 `);
 
+// Schema: Messages table (for timeline/history)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT UNIQUE,
+    from_agent TEXT NOT NULL,
+    to_agent TEXT NOT NULL,
+    thread_id TEXT,
+    payload TEXT NOT NULL,
+    metadata JSON,
+    status TEXT NOT NULL DEFAULT 'sent',
+    latency_ms INTEGER,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (from_agent) REFERENCES agents(agent_id) ON DELETE CASCADE,
+    FOREIGN KEY (to_agent) REFERENCES agents(agent_id) ON DELETE CASCADE
+  )
+`);
+
 // Create indexes for common queries
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tickets_target_agent ON tickets(target_agent);
   CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
   CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
   CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+  CREATE INDEX IF NOT EXISTS idx_messages_from ON messages(from_agent);
+  CREATE INDEX IF NOT EXISTS idx_messages_to ON messages(to_agent);
+  CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
 `);
 
 console.log('[db] ✓ Database schema initialized');

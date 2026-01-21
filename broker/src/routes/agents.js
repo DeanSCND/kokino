@@ -1,6 +1,6 @@
 import { jsonResponse, parseJson } from '../utils/response.js';
 
-export function createAgentRoutes(registry, ticketStore) {
+export function createAgentRoutes(registry, ticketStore, messageRepository = null) {
   return {
     // POST /agents/register
     async register(req, res) {
@@ -66,6 +66,19 @@ export function createAgentRoutes(registry, ticketStore) {
           timeoutMs
         });
 
+        // Log message to history (Phase 8)
+        if (messageRepository) {
+          messageRepository.save({
+            messageId: ticket.ticketId,
+            from: metadata.origin || 'ui',
+            to: agentId,
+            threadId: metadata.threadId || null,
+            payload,
+            metadata,
+            status: 'sent'
+          });
+        }
+
         // Return immediately (10-20ms target)
         jsonResponse(res, 202, {
           ticketId: ticket.ticketId,
@@ -117,6 +130,50 @@ export function createAgentRoutes(registry, ticketStore) {
         jsonResponse(res, 204);
       } catch (error) {
         console.error(`[agents/${agentId}] Delete error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // Lifecycle endpoints
+
+    // POST /agents/:agentId/start
+    async start(req, res, agentId) {
+      try {
+        const record = registry.start(agentId);
+        if (!record) {
+          return jsonResponse(res, 404, { error: 'Agent not found' });
+        }
+        jsonResponse(res, 200, { status: 'started', agent: record });
+      } catch (error) {
+        console.error(`[agents/${agentId}/start] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // POST /agents/:agentId/stop
+    async stop(req, res, agentId) {
+      try {
+        const record = registry.stop(agentId);
+        if (!record) {
+          return jsonResponse(res, 404, { error: 'Agent not found' });
+        }
+        jsonResponse(res, 200, { status: 'stopped', agent: record });
+      } catch (error) {
+        console.error(`[agents/${agentId}/stop] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // POST /agents/:agentId/restart
+    async restart(req, res, agentId) {
+      try {
+        const record = registry.restart(agentId);
+        if (!record) {
+          return jsonResponse(res, 404, { error: 'Agent not found' });
+        }
+        jsonResponse(res, 200, { status: 'restarting', agent: record });
+      } catch (error) {
+        console.error(`[agents/${agentId}/restart] Error:`, error);
         jsonResponse(res, 500, { error: error.message });
       }
     }

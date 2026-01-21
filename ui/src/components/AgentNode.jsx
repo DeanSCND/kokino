@@ -1,6 +1,6 @@
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { User, Activity, PauseCircle, WifiOff } from 'lucide-react';
+import { User, Activity, PauseCircle, WifiOff, AlertTriangle, Clock, XCircle, HelpCircle } from 'lucide-react';
 
 // Status styling map - from POC ui-observatory/src/components/AgentNode.jsx:6-11
 // Proven visual states with dual-cue system (color + icon)
@@ -11,13 +11,58 @@ const statusStyles = {
     offline: { color: 'text-text-muted', border: 'border-border', icon: WifiOff, label: 'Offline' }
 };
 
+// Phase 8: Escalation indicator styles
+const escalationStyles = {
+    blocked: {
+        icon: Clock,
+        color: 'bg-accent-orange text-white',
+        label: 'Blocked',
+        pulse: true
+    },
+    urgent: {
+        icon: AlertTriangle,
+        color: 'bg-accent-red text-white',
+        label: 'Urgent',
+        pulse: true
+    },
+    error: {
+        icon: XCircle,
+        color: 'bg-red-600 text-white',
+        label: 'Error',
+        pulse: false
+    },
+    needsHelp: {
+        icon: HelpCircle,
+        color: 'bg-accent-purple text-white',
+        label: 'Needs Help',
+        pulse: true
+    }
+};
+
 export const AgentNode = ({ data }) => {
-    const { role, name, status = 'idle', task } = data;
+    const { role, name, status = 'idle', task, escalation } = data;
     const style = statusStyles[status] || statusStyles.idle;
     const StatusIcon = style.icon;
 
+    // Phase 8: Escalation state
+    const escalationState = escalation ? escalationStyles[escalation.type] : null;
+    const EscalationIcon = escalationState?.icon;
+
     return (
-        <div className={`w-[280px] bg-surface rounded-xl border ${status === 'active' || status === 'busy' ? style.border : 'border-border'} hover:border-text-secondary transition-all shadow-lg`}>
+        <div className={`w-[280px] bg-surface rounded-xl border ${status === 'active' || status === 'busy' ? style.border : 'border-border'} hover:border-text-secondary transition-all shadow-lg relative`}>
+            {/* Phase 8: Escalation Badge */}
+            {escalationState && (
+                <div
+                    className={`absolute -top-2 -right-2 z-10 ${escalationState.color} rounded-full px-2 py-1 flex items-center gap-1 shadow-lg border-2 border-background ${escalationState.pulse ? 'animate-pulse' : ''}`}
+                    title={escalation.reason || escalationState.label}
+                >
+                    <EscalationIcon size={12} />
+                    <span className="text-[10px] font-bold uppercase tracking-wide">
+                        {escalationState.label}
+                    </span>
+                </div>
+            )}
+
             {/* Header */}
             <div className="p-4 border-b border-border flex items-center justify-between">
                 <div className="flex items-center gap-3">

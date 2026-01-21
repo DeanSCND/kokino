@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 
 import { AgentRegistry } from './models/AgentRegistry.js';
 import { TicketStore } from './models/TicketStore.js';
+import { MessageRepository } from './db/MessageRepository.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createMessageRoutes } from './routes/messages.js';
 import { jsonResponse, handleCors } from './utils/response.js';
@@ -18,10 +19,11 @@ console.log(`[broker] Node version: ${process.version}`);
 // Initialize stores
 const registry = new AgentRegistry();
 const ticketStore = new TicketStore();
+const messageRepository = new MessageRepository();
 
 // Create route handlers
-const agentRoutes = createAgentRoutes(registry, ticketStore);
-const messageRoutes = createMessageRoutes(ticketStore);
+const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository);
+const messageRoutes = createMessageRoutes(ticketStore, messageRepository);
 
 // Cleanup old tickets every minute
 setInterval(() => {
@@ -129,6 +131,25 @@ const server = http.createServer(async (req, res) => {
     if (waitMatch && method === 'GET') {
       const ticketId = waitMatch[1];
       return await messageRoutes.waitForReply(req, res, ticketId);
+    }
+
+    // Message history
+    if (pathname === '/api/messages/history' && method === 'GET') {
+      return await messageRoutes.getHistory(req, res);
+    }
+
+    // Thread messages
+    const threadMatch = pathname.match(/^\/api\/messages\/thread\/([^\/]+)$/);
+    if (threadMatch && method === 'GET') {
+      const threadId = threadMatch[1];
+      return await messageRoutes.getThread(req, res, threadId);
+    }
+
+    // Agent messages
+    const agentMessagesMatch = pathname.match(/^\/api\/messages\/agent\/([^\/]+)$/);
+    if (agentMessagesMatch && method === 'GET') {
+      const agentId = agentMessagesMatch[1];
+      return await messageRoutes.getAgentMessages(req, res, agentId);
     }
 
     // 404
