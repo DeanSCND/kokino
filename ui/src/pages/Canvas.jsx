@@ -9,7 +9,8 @@ import { TerminalPanel } from '../components/TerminalPanel';
 import { AgentDashboard } from '../components/AgentDashboard';
 import { BrokerStatus } from '../components/BrokerStatus';
 import { TerminalModal } from '../components/TerminalModal';
-import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle } from 'lucide-react';
+import { TemplateLibrary } from '../components/TemplateLibrary';
+import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle, Library } from 'lucide-react';
 import broker from '../services/broker';
 
 // Register custom node and edge types - Reference: POC Canvas.jsx:9
@@ -55,6 +56,9 @@ export const Canvas = () => {
 
     // Phase 6: Terminal state
     const [terminalAgent, setTerminalAgent] = useState(null);
+
+    // Phase 7: Template library state
+    const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
 
     // Connection handler with validation - Reference: POC Canvas.jsx:22
     const onConnect = useCallback(
@@ -158,6 +162,77 @@ export const Canvas = () => {
             setTimeout(() => {
                 setNodes(nds => nds.slice(0, -1));
             }, 2000);
+        } finally {
+            setIsAddingAgent(false);
+        }
+    };
+
+    // Phase 7: Spawn team from template
+    const spawnTemplate = async (template) => {
+        setIsAddingAgent(true);
+        setOperationError(null);
+
+        try {
+            console.log(`[canvas] Spawning template: ${template.name}`);
+
+            // Create mapping from role to generated node ID
+            const roleToNodeId = {};
+            const newNodes = [];
+
+            // Create nodes for each agent in template
+            for (const agentDef of template.agents) {
+                const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                roleToNodeId[agentDef.role] = id;
+
+                const newNode = {
+                    id,
+                    type: 'agent',
+                    position: agentDef.position,
+                    data: {
+                        name: agentDef.role,
+                        role: agentDef.role,
+                        status: 'registering',
+                        task: 'Registering with broker...'
+                    }
+                };
+
+                newNodes.push(newNode);
+
+                // Register with broker
+                try {
+                    await broker.registerAgent(agentDef.role, {
+                        type: agentDef.type || 'claude-code',
+                        metadata: agentDef.metadata || {}
+                    });
+                    console.log(`[canvas] ✓ Registered ${agentDef.role}`);
+                } catch (error) {
+                    console.error(`[canvas] Failed to register ${agentDef.role}:`, error);
+                }
+            }
+
+            // Add all nodes to canvas
+            setNodes((nds) => [...nds, ...newNodes]);
+
+            // Create edges for connections
+            const newEdges = template.connections.map((conn, i) => ({
+                id: `template-edge-${i}`,
+                source: roleToNodeId[conn.source],
+                target: roleToNodeId[conn.target],
+                type: 'orchestrated',
+                animated: true,
+                className: 'react-flow__edge',
+                data: { purpose: conn.purpose || 'message', active: false },
+                style: { stroke: 'var(--color-border)' }
+            }));
+
+            // Add all edges to canvas
+            setEdges((eds) => [...eds, ...newEdges]);
+
+            console.log(`[canvas] ✓ Spawned template with ${newNodes.length} agents and ${newEdges.length} connections`);
+
+        } catch (error) {
+            console.error(`[canvas] Template spawn failed:`, error);
+            setOperationError(error.message || 'Failed to spawn template');
         } finally {
             setIsAddingAgent(false);
         }
@@ -876,6 +951,16 @@ export const Canvas = () => {
                             </div>
                         )}
 
+                        {/* Phase 7: Templates Button */}
+                        <button
+                            onClick={() => setShowTemplateLibrary(true)}
+                            className="w-full px-3 py-2 bg-accent-purple hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                            disabled={isAddingAgent}
+                        >
+                            <Library size={16} />
+                            Team Templates
+                        </button>
+
                         <div className="grid grid-cols-2 gap-2">
                             {['Product Manager', 'Tech Lead', 'Frontend', 'Backend', 'QA', 'Droid', 'Gemini'].map((role) => (
                                 <button
@@ -1008,6 +1093,14 @@ export const Canvas = () => {
                     <TerminalModal
                         agentId={terminalAgent}
                         onClose={() => setTerminalAgent(null)}
+                    />
+                )}
+
+                {/* Phase 7: Template Library Modal */}
+                {showTemplateLibrary && (
+                    <TemplateLibrary
+                        onClose={() => setShowTemplateLibrary(false)}
+                        onSelectTemplate={spawnTemplate}
                     />
                 )}
             </div>
