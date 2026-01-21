@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Expose Tailwind colors as CSS variables for use in JS */
+    --color-background: #121214;
+    --color-surface: #1E1E22;
+    --color-surface-hover: #2A2A2E;
+    --color-border: #2A2A2E;
+    --color-text-muted: #52525B;
+  }
+
+  body {
+    @apply bg-background text-text-primary antialiased;
+  }
+
+  #root {
+    @apply w-screen h-screen;
+  }
+}
+
+/* Custom canvas grid dots like Linear */
+.bg-grid {
+    background-size: 40px 40px;
+    background-image: radial-gradient(circle, #2A2A2E 1px, transparent 1px);
+}
