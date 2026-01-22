@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, GitBranch, Trash2, GitMerge, RefreshCw, Loader2, AlertCircle, CheckCircle2, GitCompare } from 'lucide-react';
+import { X, GitBranch, Trash2, GitMerge, RefreshCw, AlertCircle, CheckCircle2, GitCompare } from 'lucide-react';
 import github from '../services/github';
+import { LoadingState } from './LoadingSpinner';
 
 /**
  * Branch Manager Component (Phase 9)
@@ -207,9 +208,7 @@ export const BranchManager = ({ onClose, repository }) => {
           )}
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 size={32} className="animate-spin text-accent-purple" />
-            </div>
+            <LoadingState message="Loading branches..." />
           ) : branches.length === 0 ? (
             <div className="text-center py-12">
               <GitBranch size={48} className="mx-auto mb-3 text-text-muted" />

@@ -3,6 +3,7 @@ import { X, GitBranch, GitPullRequest, AlertCircle, Loader2, FileCode, CheckCirc
 import github from '../services/github';
 import statusSync from '../utils/statusSync';
 import { useToast } from '../contexts/ToastContext';
+import { LoadingOverlay } from './LoadingSpinner';
 
 /**
  * Create Pull Request Dialog (Phase 9)
@@ -178,7 +179,9 @@ export const CreatePRDialog = ({ onClose, agentName, initialRepo, initialFiles =
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 relative">
+          {step === 'creating' && <LoadingOverlay message="Creating pull request..." />}
+
           {step === 'success' && createdPR ? (
             <div className="text-center py-8">
               <CheckCircle2 size={64} className="mx-auto mb-4 text-accent-green" />

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Github, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Github, CheckCircle2, AlertCircle } from 'lucide-react';
 import github from '../services/github';
 import { useToast } from '../contexts/ToastContext';
+import { LoadingSpinner } from './LoadingSpinner';
 
 /**
  * GitHub Connection Component (Phase 9)
@@ -57,7 +58,7 @@ export const GitHubConnection = () => {
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-lg">
-        <Loader2 size={16} className="animate-spin text-text-secondary" />
+        <LoadingSpinner size={16} />
         <span className="text-xs text-text-secondary">Loading...</span>
       </div>
     );

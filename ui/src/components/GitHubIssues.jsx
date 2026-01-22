@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, GitPullRequest, AlertCircle, Loader2, RefreshCw, Filter, Search, ExternalLink, Users } from 'lucide-react';
+import { X, GitPullRequest, AlertCircle, RefreshCw, Filter, Search, ExternalLink, Users } from 'lucide-react';
 import github from '../services/github';
+import { LoadingState } from './LoadingSpinner';
 
 /**
  * GitHub Issues Panel (Phase 9)
@@ -203,9 +204,7 @@ export const GitHubIssues = ({ onClose, onSpawnTeam }) => {
           )}
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 size={32} className="animate-spin text-accent-purple" />
-            </div>
+            <LoadingState message="Loading issues..." />
           ) : filteredIssues.length === 0 ? (
             <div className="text-center py-12">
               <GitPullRequest size={48} className="mx-auto mb-3 text-text-muted" />
