@@ -17,6 +17,9 @@ export const useConversation = (conversationId, options = {}) => {
 
   const fetchConversation = useCallback(async () => {
     if (!conversationId) {
+      // Reset state when conversationId is null
+      setConversation(null);
+      setTurns([]);
       setLoading(false);
       return;
     }

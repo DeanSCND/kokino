@@ -10,20 +10,20 @@ import { User, Bot, AlertCircle } from 'lucide-react';
  * - content: Message text (markdown supported)
  * - metadata: { timestamp, durationMs, error, etc. }
  */
-export const ChatBubble = ({ role, content, metadata = {} }) => {
+export const ChatBubble = ({ role, content, createdAt, metadata = {} }) => {
   const isUser = role === 'user';
   const isSystem = role === 'system';
   const isError = metadata.error === true;
 
-  // Format timestamp
-  const timestamp = metadata.createdAt
-    ? new Date(metadata.createdAt).toLocaleTimeString('en-US', {
+  // Format timestamp (from turn.createdAt, not metadata.createdAt)
+  const timestamp = createdAt
+    ? new Date(createdAt).toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit'
       })
     : null;
 
-  // Format duration
+  // Format duration (from metadata.durationMs)
   const duration = metadata.durationMs
     ? `${(metadata.durationMs / 1000).toFixed(1)}s`
     : null;
