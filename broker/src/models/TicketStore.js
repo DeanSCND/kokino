@@ -4,9 +4,10 @@ import { TicketRepository } from '../db/TicketRepository.js';
 // Ticket correlation system with SQLite persistence for Store & Forward pattern
 
 export class TicketStore {
-  constructor(registry = null) {
+  constructor(registry = null, agentRunner = null) {
     this.repo = new TicketRepository();
     this.registry = registry; // Optional: for checking agent existence
+    this.agentRunner = agentRunner; // For headless agent execution
     // Waiters are runtime-only (not persisted - they're for long-poll HTTP connections)
     this.waiters = new Map(); // ticketId -> Set of callback functions
 
@@ -53,28 +54,48 @@ export class TicketStore {
 
     this.repo.updateStatus(ticketId, 'responded', response);
 
-    // Create reverse ticket for origin agent (async reply delivery)
-    // This enables true Store & Forward: replies are delivered via watcher, not polling
-    // Only create reverse ticket if origin agent is registered (to avoid FK constraint errors)
-    const originAgentExists = this.registry ? this.registry.get(ticket.originAgent) : true;
+    // Dual-mode async reply delivery based on agent commMode
+    const originAgent = this.registry ? this.registry.get(ticket.originAgent) : null;
 
-    if (originAgentExists) {
-      const reverseTicket = this.create({
-        targetAgent: ticket.originAgent,
-        originAgent: ticket.targetAgent,
-        payload: payload,
-        metadata: {
-          ...metadata,
-          replyTo: ticketId,
-          isReply: true
-        },
-        expectReply: false,
-        timeoutMs: 30000
-      });
+    if (originAgent) {
+      const commMode = originAgent.commMode || 'tmux';
 
-      console.log(`[tickets] Responded to ticket ${ticketId}, created reverse ticket ${reverseTicket.ticketId} for ${ticket.originAgent}`);
+      if (commMode === 'headless' && this.agentRunner) {
+        // HEADLESS MODE: Direct execution via AgentRunner
+        // Deliver reply immediately via CLI subprocess instead of polling
+        console.log(`[tickets] Responded to ticket ${ticketId}, delivering to headless agent ${ticket.originAgent} via AgentRunner`);
+
+        // Execute async (don't block respond() return)
+        this.agentRunner.execute(ticket.originAgent, payload, {
+          metadata: {
+            ...metadata,
+            replyTo: ticketId,
+            isReply: true
+          }
+        }).catch(err => {
+          console.error(`[tickets] Failed to deliver reply to headless agent ${ticket.originAgent}:`, err.message);
+        });
+
+      } else {
+        // TMUX MODE: Store & Forward with reverse ticket (polling-based)
+        // Create reverse ticket for tmux watcher to poll and inject
+        const reverseTicket = this.create({
+          targetAgent: ticket.originAgent,
+          originAgent: ticket.targetAgent,
+          payload: payload,
+          metadata: {
+            ...metadata,
+            replyTo: ticketId,
+            isReply: true
+          },
+          expectReply: false,
+          timeoutMs: 30000
+        });
+
+        console.log(`[tickets] Responded to ticket ${ticketId}, created reverse ticket ${reverseTicket.ticketId} for tmux agent ${ticket.originAgent}`);
+      }
     } else {
-      console.log(`[tickets] Responded to ticket ${ticketId}, but origin agent '${ticket.originAgent}' not registered - skipping reverse ticket`);
+      console.log(`[tickets] Responded to ticket ${ticketId}, but origin agent '${ticket.originAgent}' not registered - skipping delivery`);
     }
 
     // Notify long-poll waiters (runtime-only)

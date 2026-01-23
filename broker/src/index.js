@@ -19,12 +19,12 @@ const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
 console.log(`[broker] Starting Kokino message broker...`);
 console.log(`[broker] Node version: ${process.version}`);
 
-// Initialize stores
+// Initialize stores (order matters for dependencies)
 const registry = new AgentRegistry();
-const ticketStore = new TicketStore(registry);
 const messageRepository = new MessageRepository();
 const conversationStore = new ConversationStore();
 const agentRunner = new AgentRunner(registry, conversationStore);
+const ticketStore = new TicketStore(registry, agentRunner); // Pass agentRunner for dual-mode routing
 
 console.log('[broker] ✓ AgentRunner initialized for headless execution');
 
