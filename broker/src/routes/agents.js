@@ -1,4 +1,6 @@
 import { jsonResponse, parseJson } from '../utils/response.js';
+import { execSync } from 'node:child_process';
+import { spawnAgentInTmux, killAgentTmux } from '../utils/spawn-agent.js';
 
 export function createAgentRoutes(registry, ticketStore, messageRepository = null) {
   return {
@@ -139,11 +141,27 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
     // POST /agents/:agentId/start
     async start(req, res, agentId) {
       try {
-        const record = registry.start(agentId);
+        const record = registry.get(agentId);
         if (!record) {
           return jsonResponse(res, 404, { error: 'Agent not found' });
         }
-        jsonResponse(res, 200, { status: 'started', agent: record });
+
+        // Spawn tmux session with mock agent
+        const role = record.metadata?.role || 'Developer';
+        const spawnResult = spawnAgentInTmux(agentId, role);
+
+        if (spawnResult.success) {
+          // Update status to online
+          registry.start(agentId);
+          jsonResponse(res, 200, {
+            status: 'started',
+            agent: record,
+            tmux: spawnResult.session,
+            created: spawnResult.created
+          });
+        } else {
+          jsonResponse(res, 500, { error: 'Failed to spawn agent', details: spawnResult.error });
+        }
       } catch (error) {
         console.error(`[agents/${agentId}/start] Error:`, error);
         jsonResponse(res, 500, { error: error.message });
@@ -157,6 +175,10 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
         if (!record) {
           return jsonResponse(res, 404, { error: 'Agent not found' });
         }
+
+        // Kill tmux session if it exists
+        killAgentTmux(agentId);
+
         jsonResponse(res, 200, { status: 'stopped', agent: record });
       } catch (error) {
         console.error(`[agents/${agentId}/stop] Error:`, error);
@@ -174,6 +196,30 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
         jsonResponse(res, 200, { status: 'restarting', agent: record });
       } catch (error) {
         console.error(`[agents/${agentId}/restart] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // POST /agents/:agentId/kill-tmux
+    async killTmux(req, res, agentId) {
+      try {
+        // Tmux sessions are created with pattern: dev-{agentId}
+        const tmuxSession = `dev-${agentId}`;
+
+        // Check if tmux session exists first
+        try {
+          execSync(`tmux has-session -t ${tmuxSession} 2>/dev/null`, { stdio: 'ignore' });
+          // Session exists, kill it
+          execSync(`tmux kill-session -t ${tmuxSession}`, { stdio: 'ignore' });
+          console.log(`[agents/${agentId}] Killed tmux session: ${tmuxSession}`);
+          jsonResponse(res, 200, { status: 'killed', session: tmuxSession });
+        } catch (error) {
+          // Session doesn't exist - that's fine
+          console.log(`[agents/${agentId}] No tmux session to kill: ${tmuxSession}`);
+          jsonResponse(res, 200, { status: 'not_found', session: tmuxSession });
+        }
+      } catch (error) {
+        console.error(`[agents/${agentId}/kill-tmux] Error:`, error);
         jsonResponse(res, 500, { error: error.message });
       }
     }

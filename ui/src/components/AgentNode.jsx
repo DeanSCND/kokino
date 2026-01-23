@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { User, Activity, PauseCircle, WifiOff, AlertTriangle, Clock, XCircle, HelpCircle } from 'lucide-react';
+import { User, Activity, PauseCircle, WifiOff, AlertTriangle, Clock, XCircle, HelpCircle, Trash2 } from 'lucide-react';
 
 // Status styling map - from POC ui-observatory/src/components/AgentNode.jsx:6-11
 // Proven visual states with dual-cue system (color + icon)
@@ -39,14 +39,33 @@ const escalationStyles = {
     }
 };
 
-export const AgentNode = ({ data }) => {
-    const { role, name, status = 'idle', task, escalation } = data;
+export const AgentNode = ({ data, id }) => {
+    const { role, name, status = 'idle', task, escalation, onDelete } = data;
     const style = statusStyles[status] || statusStyles.idle;
     const StatusIcon = style.icon;
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     // Phase 8: Escalation state
     const escalationState = escalation ? escalationStyles[escalation.type] : null;
     const EscalationIcon = escalationState?.icon;
+
+    const handleDeleteClick = (e) => {
+        e.stopPropagation();
+        setShowDeleteConfirm(true);
+    };
+
+    const handleConfirmDelete = (e) => {
+        e.stopPropagation();
+        if (onDelete) {
+            onDelete(id, name);
+        }
+        setShowDeleteConfirm(false);
+    };
+
+    const handleCancelDelete = (e) => {
+        e.stopPropagation();
+        setShowDeleteConfirm(false);
+    };
 
     return (
         <div className={`w-[280px] bg-surface rounded-xl border ${status === 'active' || status === 'busy' ? style.border : 'border-border'} hover:border-text-secondary transition-all shadow-lg relative`}>
@@ -75,10 +94,20 @@ export const AgentNode = ({ data }) => {
                         <p className="text-xs text-text-secondary">{role}</p>
                     </div>
                 </div>
-                {/* Status Indicator - visual dual-cue (color + icon) */}
-                <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-surface-hover/50 border border-transparent`}>
-                    <StatusIcon size={12} className={style.color} />
-                    <span className={`text-[10px] font-medium ${style.color} uppercase`}>{style.label}</span>
+                <div className="flex items-center gap-2">
+                    {/* Status Indicator - visual dual-cue (color + icon) */}
+                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-surface-hover/50 border border-transparent`}>
+                        <StatusIcon size={12} className={style.color} />
+                        <span className={`text-[10px] font-medium ${style.color} uppercase`}>{style.label}</span>
+                    </div>
+                    {/* Delete button */}
+                    <button
+                        onClick={handleDeleteClick}
+                        className="p-1.5 rounded hover:bg-red-500/10 text-text-muted hover:text-red-500 transition-colors"
+                        title="Delete agent"
+                    >
+                        <Trash2 size={14} />
+                    </button>
                 </div>
             </div>
 
@@ -96,6 +125,32 @@ export const AgentNode = ({ data }) => {
             <Handle type="source" position={Position.Bottom} className="w-3 h-3 bg-text-muted border-2 border-background !bottom-[-6px]" />
             <Handle type="target" position={Position.Left} className="w-3 h-3 bg-text-muted border-2 border-background !left-[-6px]" />
             <Handle type="source" position={Position.Right} className="w-3 h-3 bg-text-muted border-2 border-background !right-[-6px]" />
+
+            {/* Delete Confirmation Dialog */}
+            {showDeleteConfirm && (
+                <div className="absolute inset-0 bg-background/95 backdrop-blur-sm rounded-xl flex items-center justify-center z-50">
+                    <div className="bg-surface border border-border rounded-lg p-4 shadow-xl max-w-[240px]">
+                        <h4 className="text-sm font-semibold text-text-primary mb-2">Delete Agent?</h4>
+                        <p className="text-xs text-text-secondary mb-4">
+                            Remove <span className="font-medium text-text-primary">{name}</span> from the team?
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleCancelDelete}
+                                className="flex-1 px-3 py-1.5 text-xs rounded bg-surface-hover hover:bg-surface-active text-text-primary transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmDelete}
+                                className="flex-1 px-3 py-1.5 text-xs rounded bg-red-500 hover:bg-red-600 text-white transition-colors"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

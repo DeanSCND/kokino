@@ -126,6 +126,10 @@ class BrokerClient {
     return this.request(`/agents/${agentId}/restart`, { method: 'POST' });
   }
 
+  async killTmuxSession(agentId) {
+    return this.request(`/agents/${agentId}/kill-tmux`, { method: 'POST' });
+  }
+
   // System
 
   async health() {
