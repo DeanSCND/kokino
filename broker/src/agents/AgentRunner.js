@@ -149,13 +149,50 @@ export class AgentRunner {
     this.registry = registry;
     this.conversationStore = conversationStore || new ConversationStore();
 
-    // Session tracking: agentId -> { hasSession: true }
+    // Session tracking: agentId -> { sessionId, hasSession }
     this.sessions = new Map();
 
     // Active subprocess calls: agentId -> ChildProcess
     this.activeCalls = new Map();
 
+    // Execution locks: agentId -> boolean (prevents concurrent executions)
+    this.executionLocks = new Map();
+
     console.log('[AgentRunner] Initialized with pre-built Claude environment');
+  }
+
+  /**
+   * Acquire execution lock for agent (simple lock, not queue-based)
+   * Throws if agent is already executing
+   */
+  acquireLock(agentId, timeoutMs = 30000) {
+    if (this.executionLocks.get(agentId)) {
+      throw new Error(`Agent ${agentId} is already executing. Please wait for current execution to complete.`);
+    }
+
+    this.executionLocks.set(agentId, true);
+    console.log(`[AgentRunner] Lock acquired for ${agentId}`);
+
+    // Auto-release lock after timeout as safety measure
+    const timeoutHandle = setTimeout(() => {
+      if (this.executionLocks.get(agentId)) {
+        console.warn(`[AgentRunner] Force-releasing stale lock for ${agentId} after ${timeoutMs}ms`);
+        this.releaseLock(agentId);
+      }
+    }, timeoutMs);
+
+    return timeoutHandle;
+  }
+
+  /**
+   * Release execution lock for agent
+   */
+  releaseLock(agentId, timeoutHandle = null) {
+    this.executionLocks.delete(agentId);
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    console.log(`[AgentRunner] Lock released for ${agentId}`);
   }
 
   /**
@@ -178,9 +215,14 @@ export class AgentRunner {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    if (agent.commMode !== 'headless') {
-      throw new Error(`Agent ${agentId} is not in headless mode (current: ${agent.commMode})`);
+    // Check commMode from both agent root and metadata
+    const commMode = agent.commMode || agent.metadata?.commMode || 'tmux';
+    if (commMode !== 'headless') {
+      throw new Error(`Agent ${agentId} is not in headless mode (current: ${commMode})`);
     }
+
+    // Acquire execution lock (throws if already executing)
+    const lockTimeoutHandle = this.acquireLock(agentId, timeoutMs + 30000);
 
     const startTime = Date.now();
     let convId;
@@ -233,6 +275,9 @@ export class AgentRunner {
 
       const durationMs = Date.now() - startTime;
 
+      // Release lock on success
+      this.releaseLock(agentId, lockTimeoutHandle);
+
       return {
         conversationId: convId,
         content: result.response,
@@ -257,6 +302,9 @@ export class AgentRunner {
           metadata: { error: true, durationMs }
         });
       }
+
+      // CRITICAL: Always release lock on error
+      this.releaseLock(agentId, lockTimeoutHandle);
 
       throw error;
     }
