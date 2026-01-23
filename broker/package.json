@@ -1,0 +1,27 @@
+{
+  "name": "kokino-broker",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Kokino message broker with Store & Forward architecture",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "agent",
+    "broker",
+    "orchestration",
+    "message-broker"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "node-fetch": "^3.3.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

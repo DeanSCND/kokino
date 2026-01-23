@@ -1,0 +1,25 @@
+{
+  "name": "kokino",
+  "version": "0.1.0",
+  "description": "UI-First Multi-Agent Orchestration Platform",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node tests/integration/two-agent-conversation.test.js",
+    "test:single": "node tests/integration/two-agent-conversation.test.js --single",
+    "test:iterations": "node tests/integration/two-agent-conversation.test.js --iterations"
+  },
+  "keywords": [
+    "agent",
+    "orchestration",
+    "multi-agent",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "workspaces": [
+    "broker",
+    "ui",
+    "mcp"
+  ]
+}

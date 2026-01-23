@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">
+  <!-- Kokino Logo - Greyscale with Wordmark -->
+
+  <!-- Triangle fills - greyscale -->
+  <polygon points="25,11 25,50 58,24" fill="#E5E7EB"/>
+  <polygon points="25,50 58,24 76,89" fill="#D1D5DB"/>
+  <polygon points="25,50 25,89 76,89" fill="#9CA3AF"/>
+
+  <!-- K strokes -->
+  <g stroke="#374151" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="25" y1="15" x2="25" y2="85"/>
+    <line x1="25" y1="50" x2="55" y2="28"/>
+    <line x1="25" y1="50" x2="72" y2="85"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text
+    x="95"
+    y="62"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="32"
+    font-weight="600"
+    letter-spacing="0.15em"
+    fill="#374151"
+  >KOKINO</text>
+</svg>

@@ -1,0 +1,30 @@
+{
+  "name": "@kokino/mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Kokino agent-to-agent communication",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "kokino-mcp": "./build/index.js",
+    "bridge-register": "./bin/bridge-register.js",
+    "message-watcher": "./bin/message-watcher.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsc -w",
+    "lint": "echo \"TODO: add lint\"",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": ["mcp", "agent", "kokino", "orchestration"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3"
+  }
+}
