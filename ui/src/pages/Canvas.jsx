@@ -22,6 +22,7 @@ import { CreatePRDialog } from '../components/CreatePRDialog';
 import { BranchManager } from '../components/BranchManager';
 import { CommitQueueViewer } from '../components/CommitQueueViewer';
 import { StageCommitDialog } from '../components/StageCommitDialog';
+import { SpawnAgentDialog } from '../components/SpawnAgentDialog';
 import { generateTeamFromIssue } from '../utils/teamSpawner';
 import statusSync from '../utils/statusSync';
 
@@ -91,6 +92,9 @@ export const Canvas = ({ setHeaderControls }) => {
     const [showCommitQueue, setShowCommitQueue] = useState(false);
     const [showStageCommit, setShowStageCommit] = useState(false);
     const [stageCommitAgent, setStageCommitAgent] = useState(null);
+
+    // Phase 2: Spawn agent dialog state
+    const [showSpawnDialog, setShowSpawnDialog] = useState(false);
 
     // Phase 8: Loop detection state
     const loopDetectorRef = useRef(null);
@@ -190,6 +194,37 @@ export const Canvas = ({ setHeaderControls }) => {
         },
         [edges, setEdges]
     );
+
+    // Handle successful spawn from dialog
+    const handleSpawnSuccess = async (spawnResult) => {
+        console.log('[Canvas] Agent spawned successfully:', spawnResult);
+
+        // Add node to canvas
+        const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        // Grid positioning
+        const gridSpacing = 350;
+        const col = nodes.length % 3;
+        const row = Math.floor(nodes.length / 3);
+
+        const newNode = {
+            id,
+            type: 'agent',
+            position: {
+                x: 100 + (col * gridSpacing),
+                y: 100 + (row * gridSpacing)
+            },
+            data: {
+                name: spawnResult.agentId,
+                role: spawnResult.role,
+                status: 'online',
+                task: 'Ready to collaborate',
+                onDelete: handleDeleteAgent
+            }
+        };
+
+        setNodes((nds) => nds.concat(newNode));
+    };
 
     // Add agent node to canvas - Reference: POC Canvas.jsx:24-45
     // Smart naming for multi-model support
@@ -1204,10 +1239,20 @@ export const Canvas = ({ setHeaderControls }) => {
                                 </div>
                             )}
 
+                            {/* Phase 2: Spawn Agent Button (Primary) */}
+                        <button
+                            onClick={() => setShowSpawnDialog(true)}
+                            className="w-full px-3 py-2 bg-accent-purple hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                            disabled={isAddingAgent}
+                        >
+                            <Plus size={16} />
+                            Spawn Agent
+                        </button>
+
                             {/* Phase 7: Templates Button */}
                         <button
                             onClick={() => setShowTemplateLibrary(true)}
-                            className="w-full px-3 py-2 bg-accent-purple hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
+                            className="w-full px-3 py-2 bg-surface-hover hover:bg-surface-active text-text-primary rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
                             disabled={isAddingAgent}
                         >
                             <Library size={16} />
@@ -1425,6 +1470,14 @@ export const Canvas = ({ setHeaderControls }) => {
                     <TemplateLibrary
                         onClose={() => setShowTemplateLibrary(false)}
                         onSelectTemplate={spawnTemplate}
+                    />
+                )}
+
+                {/* Phase 2: Spawn Agent Dialog */}
+                {showSpawnDialog && (
+                    <SpawnAgentDialog
+                        onClose={() => setShowSpawnDialog(false)}
+                        onSuccess={handleSpawnSuccess}
                     />
                 )}
 

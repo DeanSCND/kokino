@@ -130,6 +130,19 @@ class BrokerClient {
     return this.request(`/agents/${agentId}/kill-tmux`, { method: 'POST' });
   }
 
+  // Agent Spawning
+
+  async spawnAgent({ agentId, type, role, cwd, capabilities }) {
+    return this.request('/agents/spawn', {
+      method: 'POST',
+      body: JSON.stringify({ agentId, type, role, cwd, capabilities })
+    });
+  }
+
+  async getTemplates() {
+    return this.request('/agents/templates');
+  }
+
   // System
 
   async health() {
