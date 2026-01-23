@@ -145,6 +145,7 @@ export const AgentChatPanel = ({ agent, onClose }) => {
                   key={turn.turnId || index}
                   role={turn.role}
                   content={turn.content}
+                  createdAt={turn.createdAt}
                   metadata={turn.metadata}
                 />
               ))}

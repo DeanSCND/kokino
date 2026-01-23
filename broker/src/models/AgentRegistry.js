@@ -14,9 +14,13 @@ export class AgentRegistry {
     const now = new Date().toISOString();
     const existing = this.repo.get(agentId);
 
+    // Extract commMode from metadata if provided, otherwise default to tmux
+    const commMode = metadata.commMode ?? existing?.commMode ?? 'tmux';
+
     const record = {
       agentId,
       type: type ?? existing?.type ?? 'unknown',
+      commMode,
       metadata: { ...existing?.metadata, ...metadata },
       status: 'online',
       lastHeartbeat: now,
@@ -24,7 +28,7 @@ export class AgentRegistry {
     };
 
     this.repo.save(record);
-    console.log(`[registry] Registered agent: ${agentId} (${type})`);
+    console.log(`[registry] Registered agent: ${agentId} (${type}, commMode: ${commMode})`);
     return record;
   }
 

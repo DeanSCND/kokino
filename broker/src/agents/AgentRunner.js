@@ -244,9 +244,9 @@ export class AgentRunner {
 
       console.error(`[AgentRunner] Execution failed for ${agentId}:`, error.message);
 
-      // Log error turn if we have a conversation
-      if (conversationId) {
-        this.conversationStore.addTurn(conversationId, {
+      // Log error turn if we have a conversation (use convId, not options.conversationId)
+      if (convId) {
+        this.conversationStore.addTurn(convId, {
           role: 'system',
           content: `Error: ${error.message}`,
           metadata: { error: true, durationMs }
