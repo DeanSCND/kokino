@@ -4,11 +4,12 @@ export class AgentRepository {
   constructor() {
     // Prepared statements for performance
     this.insertStmt = db.prepare(`
-      INSERT INTO agents (agent_id, type, status, metadata, heartbeat_interval_ms, last_heartbeat, created_at, updated_at)
-      VALUES (@agentId, @type, @status, @metadata, @heartbeatIntervalMs, @lastHeartbeat, @createdAt, @updatedAt)
+      INSERT INTO agents (agent_id, type, status, comm_mode, metadata, heartbeat_interval_ms, last_heartbeat, created_at, updated_at)
+      VALUES (@agentId, @type, @status, @commMode, @metadata, @heartbeatIntervalMs, @lastHeartbeat, @createdAt, @updatedAt)
       ON CONFLICT(agent_id) DO UPDATE SET
         type = @type,
         status = @status,
+        comm_mode = @commMode,
         metadata = @metadata,
         heartbeat_interval_ms = @heartbeatIntervalMs,
         last_heartbeat = @lastHeartbeat,
@@ -31,6 +32,7 @@ export class AgentRepository {
       agentId: record.agentId,
       type: record.type,
       status: record.status,
+      commMode: record.commMode || 'tmux',
       metadata: JSON.stringify(record.metadata || {}),
       heartbeatIntervalMs: record.heartbeatIntervalMs || 30000,
       lastHeartbeat: record.lastHeartbeat || now,
@@ -80,6 +82,7 @@ export class AgentRepository {
       agentId: row.agent_id,
       type: row.type,
       status: row.status,
+      commMode: row.comm_mode || 'tmux',
       metadata: JSON.parse(row.metadata || '{}'),
       heartbeatIntervalMs: row.heartbeat_interval_ms,
       lastHeartbeat: row.last_heartbeat,
