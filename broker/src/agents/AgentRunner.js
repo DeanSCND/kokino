@@ -14,6 +14,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { ConversationStore } from '../db/ConversationStore.js';
+import { getMetricsCollector } from '../telemetry/MetricsCollector.js';
 
 /**
  * Build the full environment that Claude Code expects.
@@ -148,6 +149,7 @@ export class AgentRunner {
   constructor(registry, conversationStore) {
     this.registry = registry;
     this.conversationStore = conversationStore || new ConversationStore();
+    this.metrics = getMetricsCollector();
 
     // Session tracking: agentId -> { sessionId, hasSession }
     this.sessions = new Map();
@@ -225,7 +227,14 @@ export class AgentRunner {
     const lockTimeoutHandle = this.acquireLock(agentId, timeoutMs + 30000);
 
     const startTime = Date.now();
+    const cliType = agent.type || 'claude-code';
     let convId;
+
+    // Emit EXECUTION_STARTED event
+    this.metrics.record('EXECUTION_STARTED', agentId, {
+      cliType,
+      metadata: { prompt: prompt.substring(0, 100) + '...' }
+    });
 
     try {
       // Get or create conversation
@@ -275,6 +284,14 @@ export class AgentRunner {
 
       const durationMs = Date.now() - startTime;
 
+      // Emit EXECUTION_COMPLETED event
+      this.metrics.record('EXECUTION_COMPLETED', agentId, {
+        cliType,
+        durationMs,
+        success: result.code === 0,
+        metadata: { sessionId: result.sessionId, exitCode: result.code }
+      });
+
       // Release lock on success
       this.releaseLock(agentId, lockTimeoutHandle);
 
@@ -293,6 +310,18 @@ export class AgentRunner {
       const durationMs = Date.now() - startTime;
 
       console.error(`[AgentRunner] Execution failed for ${agentId}:`, error.message);
+
+      // Emit EXECUTION_FAILED event
+      const eventType = error.message.includes('timeout') || error.message.includes('TIMEOUT')
+        ? 'EXECUTION_TIMEOUT'
+        : 'EXECUTION_FAILED';
+
+      this.metrics.record(eventType, agentId, {
+        cliType,
+        durationMs,
+        success: false,
+        metadata: { error: error.message }
+      });
 
       // Log error turn if we have a conversation (use convId, not options.conversationId)
       if (convId) {

@@ -1,0 +1,313 @@
+{
+  "dashboard": {
+    "title": "Kokino Headless Execution Monitoring",
+    "uid": "kokino-headless",
+    "tags": ["kokino", "headless", "slo"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Availability SLI (30-day rolling)",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "headless_availability",
+            "legendFormat": "Availability",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.99},
+                {"color": "green", "value": 0.995}
+              ]
+            },
+            "unit": "percentunit",
+            "min": 0.98,
+            "max": 1.0
+          }
+        },
+        "options": {
+          "graphMode": "area",
+          "colorMode": "background",
+          "textMode": "value_and_name"
+        }
+      },
+      {
+        "id": 2,
+        "title": "Latency P95 (24h window)",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+        "targets": [
+          {
+            "expr": "headless_latency_p95_ms / 1000",
+            "legendFormat": "P95 Latency",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 30},
+                {"color": "red", "value": 60}
+              ]
+            },
+            "unit": "s",
+            "min": 0,
+            "max": 120
+          }
+        },
+        "options": {
+          "graphMode": "area",
+          "colorMode": "background",
+          "textMode": "value_and_name"
+        }
+      },
+      {
+        "id": 3,
+        "title": "Error Budget Consumption (30-day)",
+        "type": "gauge",
+        "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "100 - ((headless_availability - 0.995) / 0.005 * 100)",
+            "legendFormat": "Availability Budget",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 50},
+                {"color": "orange", "value": 75},
+                {"color": "red", "value": 90}
+              ]
+            },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        },
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 4,
+        "title": "Execution Success Rate (1h)",
+        "type": "timeseries",
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(headless_executions_total{status=\"success\"}[5m]) / (rate(headless_executions_total{status=\"success\"}[5m]) + rate(headless_executions_total{status=\"failure\"}[5m]))",
+            "legendFormat": "Success Rate",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 10
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.95},
+                {"color": "green", "value": 0.99}
+              ]
+            },
+            "unit": "percentunit",
+            "min": 0.9,
+            "max": 1.0
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Execution Latency (P50/P95/P99)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(headless_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(headless_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(headless_execution_duration_seconds_bucket[5m]))",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 10,
+              "lineWidth": 2
+            },
+            "unit": "s",
+            "min": 0
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "P95"},
+              "properties": [
+                {"id": "custom.lineWidth", "value": 3},
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": ["lastNotNull", "max"]
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Execution Volume by Agent",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+        "targets": [
+          {
+            "expr": "sum by (agent_id) (rate(headless_executions_total[5m]))",
+            "legendFormat": "{{agent_id}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 50,
+              "stacking": {"mode": "normal"}
+            },
+            "unit": "reqps",
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "SLI Targets vs Current",
+        "type": "table",
+        "gridPos": {"h": 6, "w": 12, "x": 0, "y": 14},
+        "targets": [
+          {
+            "expr": "headless_availability",
+            "legendFormat": "Availability",
+            "refId": "A"
+          },
+          {
+            "expr": "headless_latency_p95_ms / 1000",
+            "legendFormat": "Latency P95",
+            "refId": "B"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "seriesToRows"
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Availability"},
+              "properties": [
+                {"id": "custom.width", "value": 150},
+                {"id": "unit", "value": "percentunit"}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Latency P95"},
+              "properties": [
+                {"id": "custom.width", "value": 150},
+                {"id": "unit", "value": "s"}
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 8,
+        "title": "Failure Rate by CLI Type",
+        "type": "piechart",
+        "gridPos": {"h": 6, "w": 12, "x": 12, "y": 14},
+        "targets": [
+          {
+            "expr": "sum by (cli_type, status) (rate(headless_executions_total[1h]))",
+            "legendFormat": "{{cli_type}} - {{status}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "pieType": "donut",
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          }
+        }
+      }
+    ],
+    "annotations": {
+      "list": [
+        {
+          "name": "Deployments",
+          "datasource": "Prometheus",
+          "expr": "changes(headless_executions_total[1m]) > 0",
+          "iconColor": "blue"
+        }
+      ]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "agent",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(headless_executions_total, agent_id)",
+          "multi": true,
+          "includeAll": true
+        },
+        {
+          "name": "cli_type",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(headless_executions_total, cli_type)",
+          "multi": true,
+          "includeAll": true
+        }
+      ]
+    }
+  }
+}

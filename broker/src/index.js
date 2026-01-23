@@ -12,6 +12,8 @@ import { createAgentRoutes } from './routes/agents.js';
 import { createMessageRoutes } from './routes/messages.js';
 import { createGitHubRoutes } from './routes/github.js';
 import { jsonResponse, handleCors } from './utils/response.js';
+import { getMetricsCollector } from './telemetry/MetricsCollector.js';
+import { PrometheusExporter } from './telemetry/PrometheusExporter.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
 const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
@@ -26,7 +28,12 @@ const conversationStore = new ConversationStore();
 const agentRunner = new AgentRunner(registry, conversationStore);
 const ticketStore = new TicketStore(registry, agentRunner); // Pass agentRunner for dual-mode routing
 
+// Initialize telemetry
+const metricsCollector = getMetricsCollector();
+const prometheusExporter = new PrometheusExporter(metricsCollector);
+
 console.log('[broker] ✓ AgentRunner initialized for headless execution');
+console.log('[broker] ✓ Telemetry & monitoring initialized');
 
 // Create route handlers
 const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository, agentRunner, conversationStore);
@@ -58,6 +65,19 @@ const server = http.createServer(async (req, res) => {
         tickets: ticketStore.size(),
         uptime: process.uptime()
       });
+    }
+
+    // Prometheus metrics
+    if (pathname === '/metrics' && method === 'GET') {
+      const metrics = prometheusExporter.export();
+      res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4' });
+      res.end(metrics);
+      return;
+    }
+
+    // SLO/SLI status
+    if (pathname === '/api/slo/status' && method === 'GET') {
+      return jsonResponse(res, 200, metricsCollector.getSLIStatus());
     }
 
     // Agent registration
