@@ -19,7 +19,7 @@ console.log(`[broker] Node version: ${process.version}`);
 
 // Initialize stores
 const registry = new AgentRegistry();
-const ticketStore = new TicketStore();
+const ticketStore = new TicketStore(registry);
 const messageRepository = new MessageRepository();
 
 // Create route handlers
@@ -116,6 +116,13 @@ const server = http.createServer(async (req, res) => {
       return await agentRoutes.restart(req, res, agentId);
     }
 
+    // Lifecycle: Kill tmux session
+    const killTmuxMatch = pathname.match(/^\/agents\/([^\/]+)\/kill-tmux$/);
+    if (killTmuxMatch && method === 'POST') {
+      const agentId = killTmuxMatch[1];
+      return await agentRoutes.killTmux(req, res, agentId);
+    }
+
     // Post reply
     if (pathname === '/replies' && method === 'POST') {
       return await messageRoutes.postReply(req, res);
@@ -133,6 +140,13 @@ const server = http.createServer(async (req, res) => {
     if (waitMatch && method === 'GET') {
       const ticketId = waitMatch[1];
       return await messageRoutes.waitForReply(req, res, ticketId);
+    }
+
+    // Acknowledge ticket delivery
+    const acknowledgeMatch = pathname.match(/^\/tickets\/([^\/]+)\/acknowledge$/);
+    if (acknowledgeMatch && method === 'POST') {
+      const ticketId = acknowledgeMatch[1];
+      return await messageRoutes.acknowledgeTicket(req, res, ticketId);
     }
 
     // Message history

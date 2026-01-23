@@ -4,8 +4,9 @@ import { TicketRepository } from '../db/TicketRepository.js';
 // Ticket correlation system with SQLite persistence for Store & Forward pattern
 
 export class TicketStore {
-  constructor() {
+  constructor(registry = null) {
     this.repo = new TicketRepository();
+    this.registry = registry; // Optional: for checking agent existence
     // Waiters are runtime-only (not persisted - they're for long-poll HTTP connections)
     this.waiters = new Map(); // ticketId -> Set of callback functions
 
@@ -52,6 +53,30 @@ export class TicketStore {
 
     this.repo.updateStatus(ticketId, 'responded', response);
 
+    // Create reverse ticket for origin agent (async reply delivery)
+    // This enables true Store & Forward: replies are delivered via watcher, not polling
+    // Only create reverse ticket if origin agent is registered (to avoid FK constraint errors)
+    const originAgentExists = this.registry ? this.registry.get(ticket.originAgent) : true;
+
+    if (originAgentExists) {
+      const reverseTicket = this.create({
+        targetAgent: ticket.originAgent,
+        originAgent: ticket.targetAgent,
+        payload: payload,
+        metadata: {
+          ...metadata,
+          replyTo: ticketId,
+          isReply: true
+        },
+        expectReply: false,
+        timeoutMs: 30000
+      });
+
+      console.log(`[tickets] Responded to ticket ${ticketId}, created reverse ticket ${reverseTicket.ticketId} for ${ticket.originAgent}`);
+    } else {
+      console.log(`[tickets] Responded to ticket ${ticketId}, but origin agent '${ticket.originAgent}' not registered - skipping reverse ticket`);
+    }
+
     // Notify long-poll waiters (runtime-only)
     const waiters = this.waiters.get(ticketId);
     if (waiters && waiters.size > 0) {
@@ -61,7 +86,22 @@ export class TicketStore {
       this.waiters.delete(ticketId);
     }
 
-    console.log(`[tickets] Responded to ticket ${ticketId}`);
+    return this.repo.get(ticketId);
+  }
+
+  acknowledge(ticketId) {
+    const ticket = this.repo.get(ticketId);
+    if (!ticket) {
+      return null;
+    }
+
+    // Only acknowledge pending tickets (don't re-acknowledge delivered/responded tickets)
+    if (ticket.status !== 'pending') {
+      return ticket;
+    }
+
+    this.repo.updateStatus(ticketId, 'delivered');
+    console.log(`[tickets] Acknowledged delivery of ticket ${ticketId}`);
     return this.repo.get(ticketId);
   }
 

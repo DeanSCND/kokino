@@ -122,6 +122,21 @@ export function createMessageRoutes(ticketStore, messageRepository = null) {
         console.error(`[messages/agent/${agentId}] Error:`, error);
         jsonResponse(res, 500, { error: error.message });
       }
+    },
+
+    // POST /tickets/:ticketId/acknowledge - Acknowledge ticket delivery
+    async acknowledgeTicket(req, res, ticketId) {
+      try {
+        const ticket = ticketStore.acknowledge(ticketId);
+        if (!ticket) {
+          return jsonResponse(res, 404, { error: 'Ticket not found' });
+        }
+
+        jsonResponse(res, 200, { ticketId: ticket.ticketId, status: ticket.status });
+      } catch (error) {
+        console.error(`[tickets/${ticketId}/acknowledge] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
     }
   };
 }
