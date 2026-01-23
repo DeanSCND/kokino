@@ -1325,14 +1325,29 @@ export const Canvas = ({ setHeaderControls }) => {
                                 <div className="px-3 py-2 border-b border-zinc-800 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                                     {contextMenu.data.role}
                                 </div>
-                                <button
-                                    onClick={handleConnect}
-                                    className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors flex items-center gap-2"
-                                    role="menuitem"
-                                >
-                                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                    Connect Terminal
-                                </button>
+                                {/* Conditional menu option based on commMode */}
+                                {(contextMenu.data.metadata?.commMode === 'headless' || contextMenu.data.commMode === 'headless') ? (
+                                    <button
+                                        onClick={() => {
+                                            setChatAgent(contextMenu.data);
+                                            closeContextMenu();
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors flex items-center gap-2"
+                                        role="menuitem"
+                                    >
+                                        <MessageSquare size={14} className="text-accent-purple" />
+                                        Open Chat
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleConnect}
+                                        className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors flex items-center gap-2"
+                                        role="menuitem"
+                                    >
+                                        <TerminalIcon size={14} className="text-green-500" />
+                                        Connect Terminal
+                                    </button>
+                                )}
                                 <button
                                     onClick={handleStart}
                                     className="w-full text-left px-4 py-2 text-sm text-green-400 hover:bg-zinc-800 hover:text-green-300 transition-colors flex items-center gap-2"

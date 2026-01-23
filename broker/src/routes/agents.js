@@ -8,13 +8,34 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
     async register(req, res) {
       try {
         const body = await parseJson(req);
-        const { agentId, type, metadata, heartbeatIntervalMs } = body;
+        const { agentId, type, metadata = {}, heartbeatIntervalMs } = body;
 
         if (!agentId) {
           return jsonResponse(res, 400, { error: 'agentId required' });
         }
 
-        const record = registry.register(agentId, { type, metadata, heartbeatIntervalMs });
+        // Auto-detect commMode based on CLI type if not explicitly set
+        // Supported headless CLIs: claude-code, factory-droid, gemini
+        const supportedHeadlessCLIs = ['claude-code', 'factory-droid', 'gemini'];
+        const defaultCommMode = supportedHeadlessCLIs.includes(type) ? 'headless' : 'tmux';
+
+        // Use explicit commMode from metadata, or fall back to auto-detected default
+        const commMode = metadata.commMode || defaultCommMode;
+
+        // Merge commMode into metadata
+        const enrichedMetadata = {
+          ...metadata,
+          commMode
+        };
+
+        console.log(`[agents/register] Registering ${agentId} (type: ${type}, commMode: ${commMode})`);
+
+        const record = registry.register(agentId, {
+          type,
+          metadata: enrichedMetadata,
+          heartbeatIntervalMs
+        });
+
         jsonResponse(res, 200, record);
       } catch (error) {
         console.error('[agents/register] Error:', error);

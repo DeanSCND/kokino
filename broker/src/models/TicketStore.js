@@ -36,7 +36,83 @@ export class TicketStore {
     this.repo.save(ticket);
     this.waiters.set(ticketId, new Set()); // Initialize waiter set for this ticket
     console.log(`[tickets] Created ticket ${ticketId}: ${originAgent} → ${targetAgent}`);
+
+    // CRITICAL: Attempt immediate delivery for headless agents
+    // This is async and non-blocking - failures are handled gracefully
+    this.deliverTicket(ticket).catch(err => {
+      console.error(`[tickets] Background delivery failed for ticket ${ticketId}:`, err.message);
+    });
+
     return ticket;
+  }
+
+  /**
+   * Deliver ticket to target agent based on commMode (headless vs tmux)
+   *
+   * HEADLESS: Direct execution via AgentRunner
+   * TMUX: Store & Forward (ticket stays pending for watcher to poll)
+   */
+  async deliverTicket(ticket) {
+    const agent = this.registry ? this.registry.get(ticket.targetAgent) : null;
+
+    if (!agent) {
+      console.log(`[tickets] Agent ${ticket.targetAgent} not registered - ticket ${ticket.ticketId} stays pending (Store & Forward)`);
+      return; // Ticket stays pending for when agent comes online
+    }
+
+    const commMode = agent.commMode || agent.metadata?.commMode || 'tmux';
+
+    if (commMode === 'headless' && this.agentRunner) {
+      // HEADLESS MODE: Execute immediately via AgentRunner
+      console.log(`[tickets] Delivering ticket ${ticket.ticketId} to headless agent ${ticket.targetAgent} via AgentRunner`);
+
+      try {
+        const result = await this.agentRunner.execute(
+          ticket.targetAgent,
+          ticket.payload,
+          {
+            metadata: {
+              ...ticket.metadata,
+              ticketId: ticket.ticketId,
+              originAgent: ticket.originAgent
+            },
+            timeoutMs: ticket.timeoutMs
+          }
+        );
+
+        // Auto-respond to ticket with execution result
+        this.respond(ticket.ticketId, result.content, {
+          conversationId: result.conversationId,
+          durationMs: result.durationMs,
+          success: result.success
+        });
+
+        console.log(`[tickets] Headless delivery complete for ticket ${ticket.ticketId} (${result.durationMs}ms)`);
+
+      } catch (error) {
+        console.error(`[tickets] Headless execution failed for ticket ${ticket.ticketId}:`, error.message);
+
+        // Mark ticket as error
+        this.repo.updateStatus(ticket.ticketId, 'error', {
+          error: error.message,
+          stack: error.stack
+        });
+
+        // Notify waiters of error
+        const waiters = this.waiters.get(ticket.ticketId);
+        if (waiters && waiters.size > 0) {
+          for (const waiter of waiters) {
+            waiter(null);
+          }
+          this.waiters.delete(ticket.ticketId);
+        }
+      }
+
+    } else {
+      // TMUX MODE: Store & Forward (ticket stays pending for watcher to poll)
+      console.log(`[tickets] Ticket ${ticket.ticketId} for tmux agent ${ticket.targetAgent} stays pending for watcher poll`);
+      // No action needed - watcher will poll and deliver
+    }
   }
 
   get(ticketId) {
