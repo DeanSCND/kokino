@@ -5,9 +5,8 @@ import '@xyflow/react/dist/style.css';
 import { AgentNode } from '../components/AgentNode';
 import { ConnectionEdge } from '../components/ConnectionEdge';
 import { ChatPanel } from '../components/ChatPanel';
-import { TerminalPanel } from '../components/TerminalPanel';
 import { AgentDashboard } from '../components/AgentDashboard';
-import { BrokerStatus } from '../components/BrokerStatus';
+import { CanvasHeader } from '../components/CanvasHeader';
 import { PerformanceMetrics } from '../components/PerformanceMetrics';
 import { TerminalModal } from '../components/TerminalModal';
 import { TemplateLibrary } from '../components/TemplateLibrary';
@@ -33,7 +32,7 @@ const edgeTypes = { orchestrated: ConnectionEdge };
 const initialNodes = [];
 const initialEdges = [];
 
-export const Canvas = () => {
+export const Canvas = ({ setHeaderControls }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const reactFlowWrapper = useRef(null);
@@ -44,11 +43,13 @@ export const Canvas = () => {
     // Phase 3: Orchestration state
     const [isOrchestrating, setIsOrchestrating] = useState(false);
     const [chatMessages, setChatMessages] = useState([]);
-    const [terminalOutput, setTerminalOutput] = useState([]);
-    const [selectedAgent, setSelectedAgent] = useState(null);
 
     // Phase 4: Dashboard view toggle
     const [activeView, setActiveView] = useState('chat'); // 'chat' or 'dashboard'
+
+    // Panel visibility toggles
+    const [showChatPanel, setShowChatPanel] = useState(false);
+    const [showTeamPanel, setShowTeamPanel] = useState(false);
 
     // Phase 4: Workflow controls
     const [isPaused, setIsPaused] = useState(false);
@@ -99,7 +100,7 @@ export const Canvas = () => {
     if (!loopDetectorRef.current) {
         loopDetectorRef.current = new LoopDetector({
             maxPathLength: 10,
-            loopThreshold: 3,
+            loopThreshold: 5,  // Increased from 3 to reduce false positives
             windowSize: 50
         });
 
@@ -182,7 +183,7 @@ export const Canvas = () => {
                     type: 'orchestrated',
                     animated: true,
                     className: 'react-flow__edge',
-                    data: { purpose: 'message', active: false },
+                    data: { purpose: 'message', active: false, onDelete: handleDeleteEdge },
                     style: { stroke: 'var(--color-border)' }
                 }, eds)
             );
@@ -202,12 +203,25 @@ export const Canvas = () => {
 
             // Smart agent naming - supports multi-model orchestration
             // Reference: POC Canvas.jsx:26-31
-            const name = role === 'Product Manager' ? 'Alice' :
+            let baseName = role === 'Product Manager' ? 'Alice' :
                 role === 'Tech Lead' ? 'Bob' :
                 role === 'Backend' ? 'Jerry' :
                 role === 'Droid' ? 'Steve' :    // Factory Droid
                 role === 'Gemini' ? 'Gemma' :   // Google Gemini
                 `Agent-${id.substring(0, 4)}`;
+
+            // Check for duplicates and auto-increment name
+            const existingNames = nodes.map(n => n.data.name);
+            let name = baseName;
+            let counter = 2;
+            while (existingNames.includes(name)) {
+                name = `${baseName}-${counter}`;
+                counter++;
+            }
+
+            if (name !== baseName) {
+                console.log(`[canvas] Agent name ${baseName} already exists, using ${name} instead`);
+            }
 
             // Grid positioning to avoid overlaps
             // Improvement over POC's random positioning
@@ -226,7 +240,8 @@ export const Canvas = () => {
                     name: name,
                     role: role,
                     status: 'registering',
-                    task: 'Registering with broker...'
+                    task: 'Registering with broker...',
+                    onDelete: handleDeleteAgent
                 }
             };
 
@@ -264,6 +279,60 @@ export const Canvas = () => {
         }
     };
 
+    // Delete agent from canvas
+    const handleDeleteAgent = async (nodeId, agentName) => {
+        console.log(`[canvas] Deleting agent: ${agentName} (${nodeId})`);
+        try {
+            // Remove node and edges from canvas
+            setNodes((nds) => {
+                const filtered = nds.filter((n) => n.id !== nodeId);
+                console.log(`[canvas] Nodes before delete: ${nds.length}, after: ${filtered.length}`);
+                return filtered;
+            });
+            setEdges((eds) => {
+                const filtered = eds.filter((e) => e.source !== nodeId && e.target !== nodeId);
+                console.log(`[canvas] Edges before delete: ${eds.length}, after: ${filtered.length}`);
+                return filtered;
+            });
+
+            // Stop agent first (sets status to offline)
+            try {
+                await broker.stopAgent(agentName);
+                console.log(`[canvas] ✓ Stopped agent ${agentName}`);
+            } catch (error) {
+                console.error(`[canvas] Failed to stop ${agentName}:`, error);
+                // Continue anyway
+            }
+
+            // Delete agent from broker registry
+            try {
+                await broker.deleteAgent(agentName);
+                console.log(`[canvas] ✓ Deleted agent ${agentName} from broker`);
+            } catch (error) {
+                console.error(`[canvas] Failed to delete ${agentName}:`, error);
+                // Continue anyway - node is already removed from UI
+            }
+
+            // Kill tmux session if it exists
+            try {
+                await broker.killTmuxSession(agentName);
+                console.log(`[canvas] ✓ Killed tmux session for ${agentName}`);
+            } catch (error) {
+                console.error(`[canvas] Failed to kill tmux session for ${agentName}:`, error);
+                // Continue anyway - session might not exist
+            }
+        } catch (error) {
+            console.error(`[canvas] Failed to delete agent:`, error);
+            setOperationError(`Failed to delete agent: ${error.message}`);
+        }
+    };
+
+    // Delete edge from canvas
+    const handleDeleteEdge = (edgeId) => {
+        setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+        console.log(`[canvas] ✓ Deleted edge ${edgeId}`);
+    };
+
     // Phase 7: Spawn team from template
     const spawnTemplate = async (template) => {
         setIsAddingAgent(true);
@@ -289,7 +358,8 @@ export const Canvas = () => {
                         name: agentDef.role,
                         role: agentDef.role,
                         status: 'registering',
-                        task: 'Registering with broker...'
+                        task: 'Registering with broker...',
+                        onDelete: handleDeleteAgent
                     }
                 };
 
@@ -318,7 +388,7 @@ export const Canvas = () => {
                 type: 'orchestrated',
                 animated: true,
                 className: 'react-flow__edge',
-                data: { purpose: conn.purpose || 'message', active: false },
+                data: { purpose: conn.purpose || 'message', active: false, onDelete: handleDeleteEdge },
                 style: { stroke: 'var(--color-border)' }
             }));
 
@@ -577,21 +647,47 @@ export const Canvas = () => {
             try {
                 const { nodes: savedNodes, edges: savedEdges } = JSON.parse(savedTeam);
                 if (savedNodes && savedNodes.length > 0) {
-                    setNodes(savedNodes);
-                    setEdges(savedEdges || []);
+                    const agentNames = savedNodes.map(n => n.data.name).join(', ');
+                    console.log(`[localStorage] Loading ${savedNodes.length} nodes (${agentNames}) and ${savedEdges?.length || 0} edges`);
+
+                    // Inject onDelete callback into loaded nodes
+                    const nodesWithCallbacks = savedNodes.map(node => ({
+                        ...node,
+                        data: {
+                            ...node.data,
+                            onDelete: handleDeleteAgent
+                        }
+                    }));
+                    // Inject onDelete callback into loaded edges
+                    const edgesWithCallbacks = (savedEdges || []).map(edge => ({
+                        ...edge,
+                        data: {
+                            ...edge.data,
+                            onDelete: handleDeleteEdge
+                        }
+                    }));
+                    setNodes(nodesWithCallbacks);
+                    setEdges(edgesWithCallbacks);
+                } else {
+                    console.log('[localStorage] No saved team found or empty');
                 }
             } catch (err) {
-                console.error('Failed to load saved team:', err);
+                console.error('[localStorage] Failed to load saved team:', err);
                 localStorage.removeItem('kokino-team-v1');
             }
+        } else {
+            console.log('[localStorage] No saved data');
         }
     }, [setNodes, setEdges]);
 
     // Phase 3: Save team to localStorage whenever nodes/edges change
     useEffect(() => {
         if (nodes.length > 0 || edges.length > 0) {
+            const agentNames = nodes.map(n => n.data.name).join(', ');
+            console.log(`[localStorage] Saving ${nodes.length} nodes (${agentNames}) and ${edges.length} edges`);
             localStorage.setItem('kokino-team-v1', JSON.stringify({ nodes, edges }));
         } else {
+            console.log('[localStorage] Clearing - canvas is empty');
             // Clear localStorage when canvas is empty
             localStorage.removeItem('kokino-team-v1');
         }
@@ -610,14 +706,48 @@ export const Canvas = () => {
 
         // Real conversation flow through broker
         const orchestrateTeam = async () => {
+            // Get agent names from current nodes
+            const agentNames = nodes.map(n => n.data.name);
+
+            if (agentNames.length < 2) {
+                console.warn('[orchestration] Need at least 2 agents to orchestrate');
+                setIsOrchestrating(false);
+                return;
+            }
+
+            // Reset loop detector for fresh orchestration run
+            if (loopDetectorRef.current) {
+                loopDetectorRef.current.reset();
+            }
+
+            // Clear any existing detected loops
+            setDetectedLoops([]);
+
+            // Generate dynamic conversation based on agents present
+            const [agent1, agent2, ...rest] = agentNames;
             const conversations = [
-                { from: 'Alice', to: 'Bob', content: 'Can you review the authentication module?' },
-                { from: 'Bob', to: 'Jerry', content: 'Jerry, please implement the user login endpoint' },
-                { from: 'Jerry', to: 'Bob', content: 'Endpoint implemented. Running tests...' },
-                { from: 'Jerry', content: '✓ All tests passed' },
-                { from: 'Bob', to: 'Alice', content: 'Authentication module is ready for review' },
-                { from: 'Alice', content: 'Great work team! Moving to QA phase.' }
+                { from: agent1, to: agent2, content: `Hi ${agent2}, can you help with this task?` },
+                { from: agent2, to: agent1, content: `Sure ${agent1}, I'm on it!` },
+                { from: agent2, content: '✓ Task completed successfully' },
+                { from: agent1, content: 'Great work team!' }
             ];
+
+            console.log(`[orchestration] Starting with agents: ${agentNames.join(', ')}`);
+
+            // Start all agents (spawn tmux sessions)
+            console.log(`[orchestration] Starting agents in tmux...`);
+            for (const agentName of agentNames) {
+                try {
+                    const result = await broker.startAgent(agentName);
+                    console.log(`[orchestration] ✓ Started ${agentName} in session ${result.tmux}`);
+                } catch (error) {
+                    console.error(`[orchestration] ✗ Failed to start ${agentName}:`, error.message);
+                }
+            }
+
+            // Give agents a moment to register and start polling
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log(`[orchestration] Agents ready, beginning message flow...`);
 
             for (let i = 0; i < conversations.length; i++) {
                 if (!isOrchestrating) break; // Stop if orchestration cancelled
@@ -721,7 +851,7 @@ export const Canvas = () => {
         return () => {
             // Future: cancel pending broker requests
         };
-    }, [isOrchestrating, nodes.length, isPaused, stepMode]);
+    }, [isOrchestrating, nodes, edges, isPaused, stepMode, setChatMessages, setNodes]);
 
     // Poll broker for agent status updates (continuous, not just during orchestration)
     useEffect(() => {
@@ -828,9 +958,8 @@ export const Canvas = () => {
                 messageIndex++;
             }
 
-            // Add terminal output
+            // Terminal output removed (legacy code)
             if (terminalIndex < mockTerminalCommands.length) {
-                setTerminalOutput((prev) => [...prev, mockTerminalCommands[terminalIndex]]);
                 terminalIndex++;
             }
 
@@ -940,10 +1069,41 @@ export const Canvas = () => {
     // Topology validation for Start Team button
     const canStartTeam = nodes.length >= 2 && edges.length >= 1;
 
+    // Update header controls whenever relevant state changes
+    useEffect(() => {
+        if (setHeaderControls) {
+            setHeaderControls(
+                <CanvasHeader
+                    isOrchestrating={isOrchestrating}
+                    onStartStop={() => {
+                        if (isOrchestrating) {
+                            setIsOrchestrating(false);
+                            setIsPaused(false);
+                            setStepMode(false);
+                            currentStepRef.current = 0;
+                        } else {
+                            // Reset and start orchestration
+                            setChatMessages([]);
+                            seenTicketIds.current.clear();
+                            currentStepRef.current = 0;
+                            setIsOrchestrating(true);
+                        }
+                    }}
+                    canStartTeam={canStartTeam}
+                    showChatPanel={showChatPanel}
+                    onToggleChat={() => setShowChatPanel(!showChatPanel)}
+                    showTeamPanel={showTeamPanel}
+                    onToggleTeam={() => setShowTeamPanel(!showTeamPanel)}
+                />
+            );
+        }
+    }, [isOrchestrating, canStartTeam, showChatPanel, showTeamPanel, setHeaderControls]);
+
     return (
         <div className="w-full h-full flex" ref={reactFlowWrapper}>
             {/* Left Panel: Communication */}
-            <aside className="w-96 h-full border-r border-border flex flex-col bg-background">
+            {showChatPanel && (
+                <aside className="w-96 h-full border-r border-border flex flex-col bg-background">
                 {/* View Toggle Tabs */}
                 <div className="flex border-b border-border bg-surface">
                     <button
@@ -976,10 +1136,7 @@ export const Canvas = () => {
 
                 {/* Active View */}
                 {activeView === 'chat' ? (
-                    <>
-                        <ChatPanel messages={chatMessages} />
-                        <TerminalPanel agentName={selectedAgent} output={terminalOutput} />
-                    </>
+                    <ChatPanel messages={chatMessages} />
                 ) : (
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
                         {/* Phase 8: Performance Metrics Dashboard */}
@@ -992,7 +1149,8 @@ export const Canvas = () => {
                         <AgentDashboard />
                     </div>
                 )}
-            </aside>
+                </aside>
+            )}
 
             {/* Right Panel: Canvas */}
             <div className="flex-1 h-full relative bg-background">
@@ -1024,116 +1182,29 @@ export const Canvas = () => {
                     />
                 </ReactFlow>
 
-                {/* Top-right Controls - Phase 4: Workflow Controls */}
-                <div className="absolute top-6 right-6 z-10 flex flex-col gap-2">
-                    {/* Primary Control: Start/Stop */}
-                    <button
-                        onClick={() => {
-                            if (isOrchestrating) {
-                                setIsOrchestrating(false);
-                                setIsPaused(false);
-                                setStepMode(false);
-                                currentStepRef.current = 0;
-                            } else {
-                                // Reset and start orchestration
-                                setChatMessages([]);
-                                setTerminalOutput([]);
-                                seenTicketIds.current.clear();
-                                currentStepRef.current = 0;
-                                setIsOrchestrating(true);
-                            }
-                        }}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                            isOrchestrating
-                                ? 'bg-red-500 hover:bg-red-600 text-white'
-                                : canStartTeam
-                                ? 'bg-accent-purple hover:bg-purple-600 text-white'
-                                : 'bg-surface-hover text-text-muted cursor-not-allowed'
-                        }`}
-                        disabled={!canStartTeam}
-                        title={!canStartTeam ? 'Add at least 2 agents and 1 connection' : ''}
-                    >
-                        {isOrchestrating ? (
-                            <>
-                                <Square size={16} fill="currentColor" />
-                                Stop Team
-                            </>
-                        ) : (
-                            <>
-                                <Play size={16} fill="currentColor" />
-                                Start Team
-                            </>
-                        )}
-                    </button>
-
-                    {/* Secondary Controls: Pause/Resume/Step (only visible during orchestration) */}
-                    {isOrchestrating && (
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setIsPaused(!isPaused)}
-                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                    isPaused
-                                        ? 'bg-green-500 hover:bg-green-600 text-white'
-                                        : 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                                }`}
-                                title={isPaused ? 'Resume' : 'Pause'}
-                            >
-                                {isPaused ? 'Resume' : 'Pause'}
-                            </button>
-
-                            <button
-                                onClick={() => {
-                                    const newStepMode = !stepMode;
-                                    setStepMode(newStepMode);
-                                    if (!newStepMode) {
-                                        // Reset advance flag when disabling step mode
-                                        advanceStepRef.current = false;
-                                    }
-                                    setIsPaused(false);
-                                }}
-                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                    stepMode
-                                        ? 'bg-accent-blue text-white'
-                                        : 'bg-surface-hover hover:bg-surface text-text-primary border border-border'
-                                }`}
-                                title="Step Mode"
-                            >
-                                Step Mode
-                            </button>
-
-                            {stepMode && (
-                                <button
-                                    onClick={() => { advanceStepRef.current = true; }}
-                                    className="px-3 py-2 rounded-lg text-sm font-medium bg-accent-purple hover:bg-purple-600 text-white transition-colors"
-                                    title="Next Step"
-                                >
-                                    Next →
-                                </button>
-                            )}
-                        </div>
-                    )}
-                </div>
-
                 {/* Floating Agent Library Panel - Reference: POC Canvas.jsx:223-242 */}
-                <div className="absolute top-6 left-6 flex flex-col gap-4 z-10">
-                    {/* Broker Connection Status */}
-                    <BrokerStatus />
+                {showTeamPanel && (
+                    <div className="absolute top-6 left-6 z-10">
+                        <div className="flex flex-col bg-surface/80 backdrop-blur border border-border rounded-xl shadow-xl w-64 max-h-[calc(100vh-8rem)]">
+                        {/* Fixed Header */}
+                        <div className="p-4 pb-2 border-b border-border flex-shrink-0">
+                            <h3 className="text-sm font-medium text-text-primary flex items-center justify-between">
+                                Team Composition
+                                {isAddingAgent && <Loader2 size={14} className="animate-spin text-accent-purple" />}
+                            </h3>
+                        </div>
 
-                    <div className="flex flex-col gap-2 bg-surface/80 backdrop-blur border border-border p-4 rounded-xl shadow-xl w-64">
-                        <h3 className="text-sm font-medium text-text-primary mb-2 flex items-center justify-between">
-                            Team Composition
-                            {isAddingAgent && <Loader2 size={14} className="animate-spin text-accent-purple" />}
-                        </h3>
+                        {/* Scrollable Content */}
+                        <div className="overflow-y-auto p-4 pt-2 flex flex-col gap-2 flex-1">
+                            {/* Error Message */}
+                            {operationError && (
+                                <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-2">
+                                    <AlertCircle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
+                                    <p className="text-xs text-red-400">{operationError}</p>
+                                </div>
+                            )}
 
-                        {/* Error Message */}
-                        {operationError && (
-                            <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-2">
-                                <AlertCircle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
-                                <p className="text-xs text-red-400">{operationError}</p>
-                            </div>
-                        )}
-
-                        {/* Phase 7: Templates Button */}
+                            {/* Phase 7: Templates Button */}
                         <button
                             onClick={() => setShowTemplateLibrary(true)}
                             className="w-full px-3 py-2 bg-accent-purple hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-2"
@@ -1211,15 +1282,17 @@ export const Canvas = () => {
                                     </span>
                                 </button>
                             ))}
+                            </div>
+
+                            {/* Agent count badge */}
+                            <div className="bg-surface/60 border border-border p-3 rounded-lg text-center mt-2">
+                                <div className="text-2xl font-bold text-text-primary">{nodes.length}</div>
+                                <div className="text-xs text-text-secondary">Agents</div>
+                            </div>
                         </div>
                     </div>
-
-                    {/* Agent count badge */}
-                    <div className="bg-surface/80 backdrop-blur border border-border p-3 rounded-xl text-center">
-                        <div className="text-2xl font-bold text-text-primary">{nodes.length}</div>
-                        <div className="text-xs text-text-secondary">Agents</div>
                     </div>
-                </div>
+                )}
 
                 {/* Context Menu - Reference: POC Canvas.jsx:269-287 */}
                 {contextMenu && (

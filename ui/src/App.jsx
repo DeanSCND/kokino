@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { Canvas } from './pages/Canvas';
@@ -7,6 +7,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './contexts/ToastContext';
 
 function App() {
+  const [headerControls, setHeaderControls] = useState(null);
+
   return (
     <ErrorBoundary>
       <ToastProvider>
@@ -19,8 +21,8 @@ function App() {
             <Route
               path="/"
               element={
-                <DashboardLayout>
-                  <Canvas />
+                <DashboardLayout headerControls={headerControls}>
+                  <Canvas setHeaderControls={setHeaderControls} />
                 </DashboardLayout>
               }
             />

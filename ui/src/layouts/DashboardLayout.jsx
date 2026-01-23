@@ -1,19 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, GitMerge, Terminal, MessageSquare, Users, Settings } from 'lucide-react';
 import { GitHubConnection } from '../components/GitHubConnection';
 import { ServiceStatusBanner } from '../components/ServiceStatus';
+import { CanvasHeader } from '../components/CanvasHeader';
 
-const SidebarItem = ({ icon: Icon, active, label }) => (
-    <button
-        className={`p-3 rounded-lg mb-2 transition-colors ${active ? 'bg-surface-active text-primary' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
-        aria-label={label}
-        aria-pressed={active}
-    >
-        <Icon size={24} strokeWidth={1.5} />
-    </button>
-);
-
-export const DashboardLayout = ({ children }) => {
+export const DashboardLayout = ({ children, headerControls }) => {
     const [brokerAvailable, setBrokerAvailable] = useState(true);
     const [githubAvailable, setGithubAvailable] = useState(true);
 
@@ -42,25 +32,11 @@ export const DashboardLayout = ({ children }) => {
 
     return (
         <div className="flex h-screen w-screen bg-background overflow-hidden text-text-primary font-sans">
-            {/* Minimal Sidebar - 16px icons only for maximum canvas space */}
-            <aside className="w-16 h-full border-r border-border bg-surface flex flex-col items-center py-4 z-20">
-                <div className="mb-8">
-                    {/* Logo */}
-                    <div className="w-8 h-8 bg-accent-purple rounded-lg flex items-center justify-center font-bold text-sm">
-                        K
-                    </div>
-                </div>
-
-                <nav className="flex-1 flex flex-col items-center w-full px-2">
-                    <SidebarItem icon={LayoutDashboard} label="Dashboard" />
-                    <SidebarItem icon={Users} label="Team Canvas" active />
-                    <SidebarItem icon={GitMerge} label="Workflows" />
-                    <SidebarItem icon={Terminal} label="Terminals" />
-                    <SidebarItem icon={MessageSquare} label="Messages" />
-                </nav>
-
-                <div className="mt-auto px-2">
-                    <SidebarItem icon={Settings} label="Settings" />
+            {/* Minimal Sidebar - Logo only */}
+            <aside className="w-16 h-screen border-r border-border bg-surface flex flex-col items-center pt-4 z-20">
+                {/* Logo */}
+                <div className="w-8 h-8 bg-accent-purple rounded-lg flex items-center justify-center font-bold text-sm">
+                    K
                 </div>
             </aside>
 
@@ -72,20 +48,24 @@ export const DashboardLayout = ({ children }) => {
                     githubAvailable={githubAvailable}
                 />
 
-                {/* Header with breadcrumbs */}
+                {/* Header with controls */}
                 <header className="absolute top-0 left-0 right-0 h-14 border-b border-border bg-background/80 backdrop-blur-md z-10 flex items-center px-6 justify-between">
                     <div className="flex items-center gap-2 text-sm text-text-muted">
                         <span className="text-text-primary font-medium">Team Canvas</span>
                         <span>/</span>
                         <span>Overview</span>
                     </div>
+
+                    {/* Right-aligned controls */}
                     <div className="flex items-center gap-4">
+                        {headerControls}
+                        <div className="w-px h-6 bg-border" />
                         <GitHubConnection />
                     </div>
                 </header>
 
-                {/* Canvas area - full height with top padding for header */}
-                <div className="w-full h-full pt-14">
+                {/* Canvas area - full height minus header */}
+                <div className="absolute top-14 left-0 right-0 bottom-0">
                     {children}
                 </div>
             </main>
