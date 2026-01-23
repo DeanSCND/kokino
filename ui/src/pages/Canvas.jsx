@@ -9,6 +9,7 @@ import { AgentDashboard } from '../components/AgentDashboard';
 import { CanvasHeader } from '../components/CanvasHeader';
 import { PerformanceMetrics } from '../components/PerformanceMetrics';
 import { TerminalModal } from '../components/TerminalModal';
+import { AgentChatPanel } from '../components/AgentChatPanel';
 import { TemplateLibrary } from '../components/TemplateLibrary';
 import { TimelineViewer } from '../components/TimelineViewer';
 import { LoopAlertManager } from '../components/LoopAlert';
@@ -70,6 +71,9 @@ export const Canvas = ({ setHeaderControls }) => {
 
     // Phase 6: Terminal state
     const [terminalAgent, setTerminalAgent] = useState(null);
+
+    // Headless: Chat state
+    const [chatAgent, setChatAgent] = useState(null);
 
     // Phase 7: Template library state
     const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
@@ -453,6 +457,18 @@ export const Canvas = ({ setHeaderControls }) => {
     }, []);
 
     const onPaneClick = useCallback(() => closeContextMenu(), [closeContextMenu]);
+
+    // Node double-click handler - Open chat for headless, terminal for tmux
+    const onNodeDoubleClick = useCallback((event, node) => {
+        const agent = node.data;
+        const commMode = agent.metadata?.commMode || agent.commMode || 'tmux';
+
+        if (commMode === 'headless') {
+            setChatAgent(agent);
+        } else {
+            setTerminalAgent(agent.name);
+        }
+    }, []);
 
     // Lifecycle handlers - Phase 5
     const handleConnect = () => {
@@ -1161,6 +1177,7 @@ export const Canvas = ({ setHeaderControls }) => {
                     onEdgesChange={onEdgesChange}
                     onConnect={onConnect}
                     onNodeContextMenu={onNodeContextMenu}
+                    onNodeDoubleClick={onNodeDoubleClick}
                     onEdgeContextMenu={onEdgeContextMenu}
                     onPaneClick={onPaneClick}
                     nodeTypes={nodeTypes}
@@ -1417,6 +1434,14 @@ export const Canvas = ({ setHeaderControls }) => {
                     <TerminalModal
                         agentId={terminalAgent}
                         onClose={() => setTerminalAgent(null)}
+                    />
+                )}
+
+                {/* Headless: Chat Modal */}
+                {chatAgent && (
+                    <AgentChatPanel
+                        agent={chatAgent}
+                        onClose={() => setChatAgent(null)}
                     />
                 )}
 
