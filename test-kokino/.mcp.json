@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+      "agent-bridge": {
+        "command": "node",
+        "args": ["/Users/deanskelton/Devlopment/agent-collab/kokino/mcp/build/index.js"],
+        "env": {
+          "BRIDGE_BROKER_URL": "http://127.0.0.1:5050",
+          "AGENT_ID": "TestAgent"
+        }
+      }
+    }
+  }

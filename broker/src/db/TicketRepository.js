@@ -21,7 +21,7 @@ export class TicketRepository {
       ticketId: ticket.ticketId,
       targetAgent: ticket.targetAgent,
       originAgent: ticket.originAgent,
-      payload: ticket.payload,
+      payload: typeof ticket.payload === 'string' ? ticket.payload : JSON.stringify(ticket.payload),
       metadata: JSON.stringify(ticket.metadata || {}),
       expectReply: ticket.expectReply ? 1 : 0,
       timeoutMs: ticket.timeoutMs || 30000,
@@ -61,11 +61,19 @@ export class TicketRepository {
   }
 
   deserialize(row) {
+    // Try to parse payload as JSON, fall back to string if it fails
+    let payload = row.payload;
+    try {
+      payload = JSON.parse(row.payload);
+    } catch {
+      // Payload is already a string, leave as-is
+    }
+
     return {
       ticketId: row.ticket_id,
       targetAgent: row.target_agent,
       originAgent: row.origin_agent,
-      payload: row.payload,
+      payload,
       metadata: JSON.parse(row.metadata || '{}'),
       expectReply: Boolean(row.expect_reply),
       timeoutMs: row.timeout_ms,

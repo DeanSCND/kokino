@@ -205,7 +205,9 @@ ${delimiter}`;
  * CRITICAL: Add to seenSet BEFORE injection to prevent race conditions
  */
 async function injectMessage(config, ticket) {
-  const isReply = ticket.originAgent === config.agent;
+  // FIXED: Check metadata.isReply instead of originAgent === config.agent
+  // Reverse tickets created by TicketStore.respond() have metadata.isReply = true
+  const isReply = ticket.metadata?.isReply === true;
 
   // Wait for terminal to be ready (with timeout)
   let ready = false;
@@ -226,9 +228,14 @@ async function injectMessage(config, ticket) {
   }
 
   const headerText = isReply
-    ? `↩️ REPLY TO YOUR MESSAGE`
-    : `📬 NEW MESSAGE FROM: ${ticket.metadata?.origin || 'unknown agent'}`;
-  const msgBody = isReply ? (ticket.response?.payload || '') : (ticket.payload || '');
+    ? `↩️ REPLY TO YOUR MESSAGE (re: ${ticket.metadata.replyTo?.substring(0, 8)}...)`
+    : `📬 NEW MESSAGE FROM: ${ticket.metadata?.origin || ticket.originAgent || 'unknown agent'}`;
+
+  // For replies, show the actual reply payload
+  // For new messages, show the ticket payload
+  const msgBody = typeof ticket.payload === 'string'
+    ? ticket.payload
+    : JSON.stringify(ticket.payload, null, 2);
 
   const command = generateHeredoc(ticket, headerText, msgBody);
 
