@@ -12,6 +12,7 @@
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { ConversationStore } from '../db/ConversationStore.js';
 
 /**
@@ -42,14 +43,17 @@ function buildClaudeEnvironment() {
   }
 
   // Build PATH with all expected binary locations
-  const fullPath = [
+  const nvmNodePath = process.env.NVM_BIN || (process.env.NVM_DIR && path.join(process.env.NVM_DIR, 'current/bin'));
+  const pathEntries = [
+    nvmNodePath,                   // NVM-managed Node.js binaries (includes claude)
     '/opt/homebrew/bin',           // macOS Homebrew
     '/usr/local/bin',
     path.join(HOME, '.local/bin'), // pipx, etc.
     path.join(HOME, '.bun/bin'),   // Bun
     '/usr/bin',
     '/bin',
-  ].join(':');
+  ].filter(Boolean);
+  const fullPath = pathEntries.join(':');
 
   const env = {
     ...process.env,
@@ -179,10 +183,11 @@ export class AgentRunner {
     }
 
     const startTime = Date.now();
+    let convId;
 
     try {
       // Get or create conversation
-      let convId = conversationId;
+      convId = conversationId;
       if (!convId) {
         const existing = this.conversationStore.getAgentConversations(agentId);
         if (existing.length > 0) {
@@ -274,15 +279,16 @@ export class AgentRunner {
 
     // Session management: --session-id for NEW, --resume for EXISTING
     const sessionInfo = this.sessions.get(agentId);
-    if (sessionInfo?.hasSession) {
-      // Continue existing session
-      args.push('--resume', agentId);
-      console.log(`[AgentRunner] Resuming session: ${agentId}`);
+    if (sessionInfo?.sessionId) {
+      // Continue existing session (resume uses the UUID session ID)
+      args.push('--resume', sessionInfo.sessionId);
+      console.log(`[AgentRunner] Resuming session: ${sessionInfo.sessionId}`);
     } else {
-      // Create new named session
-      args.push('--session-id', agentId);
-      this.sessions.set(agentId, { hasSession: true });
-      console.log(`[AgentRunner] Starting new session: ${agentId}`);
+      // Create new session with UUID
+      const sessionId = randomUUID();
+      args.push('--session-id', sessionId);
+      this.sessions.set(agentId, { sessionId });
+      console.log(`[AgentRunner] Starting new session: ${sessionId} for agent ${agentId}`);
     }
 
     // Add MCP config if configured
