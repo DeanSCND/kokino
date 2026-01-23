@@ -1,9 +1,37 @@
 import { jsonResponse, parseJson } from '../utils/response.js';
 import { execSync } from 'node:child_process';
 import { spawnAgentInTmux, killAgentTmux } from '../utils/spawn-agent.js';
+import { getAllTemplates } from '../agents/templates.js';
 
-export function createAgentRoutes(registry, ticketStore, messageRepository = null) {
+export function createAgentRoutes(registry, ticketStore, messageRepository = null, processManager = null) {
   return {
+    // POST /agents/spawn
+    async spawn(req, res) {
+      try {
+        if (!processManager) {
+          return jsonResponse(res, 501, { error: 'ProcessManager not initialized' });
+        }
+
+        const body = await parseJson(req);
+        const { agentId, type, role, cwd, capabilities } = body;
+
+        if (!agentId) {
+          return jsonResponse(res, 400, { error: 'agentId required' });
+        }
+
+        const result = await processManager.spawn({ agentId, type, role, cwd, capabilities });
+
+        if (result.success) {
+          jsonResponse(res, 200, result);
+        } else {
+          const statusCode = result.existing ? 409 : 500;
+          jsonResponse(res, statusCode, result);
+        }
+      } catch (error) {
+        console.error('[agents/spawn] Error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
     // POST /agents/register
     async register(req, res) {
       try {
@@ -220,6 +248,17 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
         }
       } catch (error) {
         console.error(`[agents/${agentId}/kill-tmux] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // GET /agents/templates
+    async getTemplates(req, res) {
+      try {
+        const templates = getAllTemplates();
+        jsonResponse(res, 200, templates);
+      } catch (error) {
+        console.error('[agents/templates] Error:', error);
         jsonResponse(res, 500, { error: error.message });
       }
     }

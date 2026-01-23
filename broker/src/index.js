@@ -6,6 +6,8 @@ import { spawn } from 'node:child_process';
 import { AgentRegistry } from './models/AgentRegistry.js';
 import { TicketStore } from './models/TicketStore.js';
 import { MessageRepository } from './db/MessageRepository.js';
+import { ProcessManager } from './agents/ProcessManager.js';
+import { HealthChecker } from './agents/HealthChecker.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createMessageRoutes } from './routes/messages.js';
 import { createGitHubRoutes } from './routes/github.js';
@@ -13,6 +15,7 @@ import { jsonResponse, handleCors } from './utils/response.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
 const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
+const BROKER_URL = `http://${HOST}:${PORT}`;
 
 console.log(`[broker] Starting Kokino message broker...`);
 console.log(`[broker] Node version: ${process.version}`);
@@ -22,8 +25,14 @@ const registry = new AgentRegistry();
 const ticketStore = new TicketStore(registry);
 const messageRepository = new MessageRepository();
 
+// Initialize process manager
+const processManager = new ProcessManager(registry, BROKER_URL);
+
+// Initialize health checker
+const healthChecker = new HealthChecker(registry, processManager);
+
 // Create route handlers
-const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository);
+const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository, processManager);
 const messageRoutes = createMessageRoutes(ticketStore, messageRepository);
 const githubRoutes = createGitHubRoutes();
 
@@ -31,6 +40,16 @@ const githubRoutes = createGitHubRoutes();
 setInterval(() => {
   ticketStore.cleanup(60000); // Remove tickets older than 1 minute
 }, 60000);
+
+// Start health checker (checks every 30 seconds)
+healthChecker.start(30000);
+
+// Session recovery on startup
+(async () => {
+  console.log('[broker] Performing session recovery...');
+  const recovered = await processManager.recoverSessions();
+  console.log(`[broker] Session recovery complete: ${recovered.reconnected} reconnected, ${recovered.cleaned} cleaned`);
+})();
 
 // HTTP Server
 const server = http.createServer(async (req, res) => {
@@ -54,6 +73,11 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // Agent spawn
+    if (pathname === '/agents/spawn' && method === 'POST') {
+      return await agentRoutes.spawn(req, res);
+    }
+
     // Agent registration
     if (pathname === '/agents/register' && method === 'POST') {
       return await agentRoutes.register(req, res);
@@ -62,6 +86,11 @@ const server = http.createServer(async (req, res) => {
     // List agents
     if (pathname === '/agents' && method === 'GET') {
       return await agentRoutes.list(req, res);
+    }
+
+    // Get templates
+    if (pathname === '/agents/templates' && method === 'GET') {
+      return await agentRoutes.getTemplates(req, res);
     }
 
     // Agent-specific routes
