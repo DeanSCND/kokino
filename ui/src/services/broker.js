@@ -130,6 +130,31 @@ class BrokerClient {
     return this.request(`/agents/${agentId}/kill-tmux`, { method: 'POST' });
   }
 
+  // Headless Execution
+
+  async executeTask(agentId, { prompt, timeoutMs, metadata }) {
+    return this.request(`/agents/${agentId}/execute`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt, timeoutMs, metadata })
+    });
+  }
+
+  async endSession(agentId) {
+    return this.request(`/agents/${agentId}/end-session`, { method: 'POST' });
+  }
+
+  async getConversations(agentId) {
+    return this.request(`/agents/${agentId}/conversations`);
+  }
+
+  async getConversation(conversationId) {
+    return this.request(`/conversations/${conversationId}`);
+  }
+
+  async deleteConversation(conversationId) {
+    return this.request(`/conversations/${conversationId}`, { method: 'DELETE' });
+  }
+
   // System
 
   async health() {

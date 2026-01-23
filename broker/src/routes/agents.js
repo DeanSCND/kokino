@@ -2,7 +2,7 @@ import { jsonResponse, parseJson } from '../utils/response.js';
 import { execSync } from 'node:child_process';
 import { spawnAgentInTmux, killAgentTmux } from '../utils/spawn-agent.js';
 
-export function createAgentRoutes(registry, ticketStore, messageRepository = null) {
+export function createAgentRoutes(registry, ticketStore, messageRepository = null, agentRunner = null, conversationStore = null) {
   return {
     // POST /agents/register
     async register(req, res) {
@@ -220,6 +220,100 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
         }
       } catch (error) {
         console.error(`[agents/${agentId}/kill-tmux] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // POST /agents/:agentId/execute - Execute headless task
+    async execute(req, res, agentId) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        const body = await parseJson(req);
+        const { prompt, timeoutMs, metadata } = body;
+
+        if (!prompt) {
+          return jsonResponse(res, 400, { error: 'prompt required' });
+        }
+
+        const result = await agentRunner.execute(agentId, prompt, {
+          timeoutMs,
+          metadata
+        });
+
+        jsonResponse(res, 200, result);
+      } catch (error) {
+        console.error(`[agents/${agentId}/execute] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // POST /agents/:agentId/end-session - End headless session
+    async endSession(req, res, agentId) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        agentRunner.endSession(agentId);
+        jsonResponse(res, 200, { status: 'session ended', agentId });
+      } catch (error) {
+        console.error(`[agents/${agentId}/end-session] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // GET /agents/:agentId/conversations - Get agent conversations
+    async getConversations(req, res, agentId) {
+      try {
+        if (!conversationStore) {
+          return jsonResponse(res, 503, { error: 'ConversationStore not available' });
+        }
+
+        const conversations = conversationStore.getAgentConversations(agentId);
+        jsonResponse(res, 200, conversations);
+      } catch (error) {
+        console.error(`[agents/${agentId}/conversations] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // GET /conversations/:conversationId - Get conversation with turns
+    async getConversation(req, res, conversationId) {
+      try {
+        if (!conversationStore) {
+          return jsonResponse(res, 503, { error: 'ConversationStore not available' });
+        }
+
+        const conversation = conversationStore.getConversationWithTurns(conversationId);
+        if (!conversation) {
+          return jsonResponse(res, 404, { error: 'Conversation not found' });
+        }
+
+        jsonResponse(res, 200, conversation);
+      } catch (error) {
+        console.error(`[conversations/${conversationId}] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // DELETE /conversations/:conversationId - Delete conversation
+    async deleteConversation(req, res, conversationId) {
+      try {
+        if (!conversationStore) {
+          return jsonResponse(res, 503, { error: 'ConversationStore not available' });
+        }
+
+        const deleted = conversationStore.deleteConversation(conversationId);
+        if (!deleted) {
+          return jsonResponse(res, 404, { error: 'Conversation not found' });
+        }
+
+        jsonResponse(res, 200, { status: 'deleted', conversationId });
+      } catch (error) {
+        console.error(`[conversations/${conversationId}/delete] Error:`, error);
         jsonResponse(res, 500, { error: error.message });
       }
     }

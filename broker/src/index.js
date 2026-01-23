@@ -6,6 +6,8 @@ import { spawn } from 'node:child_process';
 import { AgentRegistry } from './models/AgentRegistry.js';
 import { TicketStore } from './models/TicketStore.js';
 import { MessageRepository } from './db/MessageRepository.js';
+import { ConversationStore } from './db/ConversationStore.js';
+import { AgentRunner } from './agents/AgentRunner.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createMessageRoutes } from './routes/messages.js';
 import { createGitHubRoutes } from './routes/github.js';
@@ -21,9 +23,13 @@ console.log(`[broker] Node version: ${process.version}`);
 const registry = new AgentRegistry();
 const ticketStore = new TicketStore(registry);
 const messageRepository = new MessageRepository();
+const conversationStore = new ConversationStore();
+const agentRunner = new AgentRunner(registry, conversationStore);
+
+console.log('[broker] ✓ AgentRunner initialized for headless execution');
 
 // Create route handlers
-const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository);
+const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository, agentRunner, conversationStore);
 const messageRoutes = createMessageRoutes(ticketStore, messageRepository);
 const githubRoutes = createGitHubRoutes();
 
@@ -121,6 +127,39 @@ const server = http.createServer(async (req, res) => {
     if (killTmuxMatch && method === 'POST') {
       const agentId = killTmuxMatch[1];
       return await agentRoutes.killTmux(req, res, agentId);
+    }
+
+    // Headless Execution: Execute task
+    const executeMatch = pathname.match(/^\/agents\/([^\/]+)\/execute$/);
+    if (executeMatch && method === 'POST') {
+      const agentId = executeMatch[1];
+      return await agentRoutes.execute(req, res, agentId);
+    }
+
+    // Headless Execution: End session
+    const endSessionMatch = pathname.match(/^\/agents\/([^\/]+)\/end-session$/);
+    if (endSessionMatch && method === 'POST') {
+      const agentId = endSessionMatch[1];
+      return await agentRoutes.endSession(req, res, agentId);
+    }
+
+    // Headless Execution: Get agent conversations
+    const conversationsMatch = pathname.match(/^\/agents\/([^\/]+)\/conversations$/);
+    if (conversationsMatch && method === 'GET') {
+      const agentId = conversationsMatch[1];
+      return await agentRoutes.getConversations(req, res, agentId);
+    }
+
+    // Headless Execution: Get specific conversation
+    const conversationMatch = pathname.match(/^\/conversations\/([^\/]+)$/);
+    if (conversationMatch) {
+      const conversationId = conversationMatch[1];
+      if (method === 'GET') {
+        return await agentRoutes.getConversation(req, res, conversationId);
+      }
+      if (method === 'DELETE') {
+        return await agentRoutes.deleteConversation(req, res, conversationId);
+      }
     }
 
     // Post reply

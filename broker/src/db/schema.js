@@ -25,6 +25,7 @@ db.exec(`
     agent_id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'online',
+    comm_mode TEXT NOT NULL DEFAULT 'tmux' CHECK(comm_mode IN ('tmux', 'headless')),
     metadata JSON,
     heartbeat_interval_ms INTEGER DEFAULT 30000,
     last_heartbeat TEXT NOT NULL,
@@ -69,16 +70,47 @@ db.exec(`
   )
 `);
 
+// Schema: Conversations table (headless agent chat sessions)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS conversations (
+    conversation_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    title TEXT,
+    metadata JSON,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+  )
+`);
+
+// Schema: Turns table (individual messages/responses in conversations)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS turns (
+    turn_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+    content TEXT NOT NULL,
+    metadata JSON,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
+  )
+`);
+
 // Create indexes for common queries
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tickets_target_agent ON tickets(target_agent);
   CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
   CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
   CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+  CREATE INDEX IF NOT EXISTS idx_agents_comm_mode ON agents(comm_mode);
   CREATE INDEX IF NOT EXISTS idx_messages_from ON messages(from_agent);
   CREATE INDEX IF NOT EXISTS idx_messages_to ON messages(to_agent);
   CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
   CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_conversations_agent ON conversations(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
+  CREATE INDEX IF NOT EXISTS idx_turns_conversation ON turns(conversation_id);
+  CREATE INDEX IF NOT EXISTS idx_turns_created ON turns(created_at);
 `);
 
 console.log('[db] ✓ Database schema initialized');
