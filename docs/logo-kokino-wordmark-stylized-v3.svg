@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 60" width="300" height="60">
+  <!-- KOKINO Wordmark v3 - Sun filled, Moon as crescent using mask -->
+
+  <defs>
+    <mask id="moonMask">
+      <circle cx="235" cy="30" r="15" fill="white"/>
+      <circle cx="243" cy="25" r="11" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- K (first) -->
+  <g stroke="#1F2937" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="10" y1="10" x2="10" y2="50"/>
+    <line x1="10" y1="30" x2="28" y2="16"/>
+    <line x1="10" y1="30" x2="35" y2="50"/>
+  </g>
+
+  <!-- O (first) - Sun -->
+  <circle cx="60" cy="30" r="15" fill="#FBBF24"/>
+
+  <!-- K (second) -->
+  <g stroke="#1F2937" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="95" y1="10" x2="95" y2="50"/>
+    <line x1="95" y1="30" x2="113" y2="16"/>
+    <line x1="95" y1="30" x2="120" y2="50"/>
+  </g>
+
+  <!-- I -->
+  <line x1="145" y1="10" x2="145" y2="50" stroke="#1F2937" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- N -->
+  <g stroke="#1F2937" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="170" y1="50" x2="170" y2="10"/>
+    <line x1="170" y1="10" x2="200" y2="50"/>
+    <line x1="200" y1="50" x2="200" y2="10"/>
+  </g>
+
+  <!-- O (second) - Moon crescent -->
+  <circle cx="235" cy="30" r="15" fill="#CBD5E1" mask="url(#moonMask)"/>
+</svg>

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- K with 3 triangles filled - adjusted for rounded stroke caps -->
+  <!-- Stroke width is 8, so caps extend 4px beyond the coordinate -->
+
+  <!-- Upper triangle: extend to actual cap edges -->
+  <polygon
+    points="25,11 25,50 58,24"
+    fill="#FDE68A"
+  />
+
+  <!-- Middle/right triangle: junction to both arm tips (extended) -->
+  <polygon
+    points="25,50 58,24 76,89"
+    fill="#FCD34D"
+  />
+
+  <!-- Lower triangle: stem bottom to junction to lower arm end (extended) -->
+  <polygon
+    points="25,50 25,89 76,89"
+    fill="#FBBF24"
+  />
+
+  <!-- K strokes on top -->
+  <g stroke="#1F2937" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Vertical stem -->
+    <line x1="25" y1="15" x2="25" y2="85"/>
+
+    <!-- Upper diagonal (shorter) -->
+    <line x1="25" y1="50" x2="55" y2="28"/>
+
+    <!-- Lower diagonal -->
+    <line x1="25" y1="50" x2="72" y2="85"/>
+  </g>
+</svg>

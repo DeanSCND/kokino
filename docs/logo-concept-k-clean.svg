@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Clean K - Shorter upper arm like original -->
+
+  <g stroke="#1F2937" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Vertical stem -->
+    <line x1="25" y1="15" x2="25" y2="85"/>
+
+    <!-- Upper diagonal (shorter) -->
+    <line x1="25" y1="50" x2="62" y2="22"/>
+
+    <!-- Lower diagonal (longer) -->
+    <line x1="25" y1="50" x2="72" y2="85"/>
+  </g>
+</svg>
