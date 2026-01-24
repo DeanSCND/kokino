@@ -429,38 +429,6 @@ export class AgentRunner {
   }
 
   /**
-   * End a session when agent is stopped
-   */
-  endSession(agentId) {
-    if (this.sessions.has(agentId)) {
-      this.sessions.delete(agentId);
-      console.log(`[AgentRunner] Session ended: ${agentId}`);
-    }
-
-    // Kill active call if running
-    if (this.activeCalls.has(agentId)) {
-      const process = this.activeCalls.get(agentId);
-      process.kill('SIGTERM');
-      this.activeCalls.delete(agentId);
-      console.log(`[AgentRunner] Killed active process for: ${agentId}`);
-    }
-  }
-
-  /**
-   * Cancel running execution
-   */
-  async cancel(agentId) {
-    if (this.activeCalls.has(agentId)) {
-      const process = this.activeCalls.get(agentId);
-      process.kill('SIGTERM');
-      this.activeCalls.delete(agentId);
-      console.log(`[AgentRunner] Cancelled execution for: ${agentId}`);
-      return true;
-    }
-    return false;
-  }
-
-  /**
    * Get conversation history for agent
    */
   async getHistory(agentId) {

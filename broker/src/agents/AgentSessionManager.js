@@ -176,15 +176,30 @@ export class AgentSessionManager extends EventEmitter {
 
     console.log(`[SessionManager] Cancelling execution for ${agentId} (PID: ${process.pid})`);
 
-    // Send SIGTERM, then SIGKILL after grace period
+    // Send SIGTERM, then SIGKILL after grace period if process still alive
+    let processExited = false;
+
+    // Track when process actually exits
+    const exitHandler = () => {
+      processExited = true;
+    };
+    process.once('close', exitHandler);
+
     process.kill('SIGTERM');
 
-    await new Promise(resolve => setTimeout(resolve, 5000)); // 5s grace period
+    // Wait 5s grace period
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
-    if (!process.killed) {
-      console.warn(`[SessionManager] Force killing ${agentId} (PID: ${process.pid})`);
+    // If process hasn't exited yet, escalate to SIGKILL
+    if (!processExited && process.exitCode === null && process.signalCode === null) {
+      console.warn(`[SessionManager] Process ${process.pid} still alive after SIGTERM, escalating to SIGKILL`);
       process.kill('SIGKILL');
+    } else {
+      console.log(`[SessionManager] Process ${process.pid} exited gracefully after SIGTERM`);
     }
+
+    // Cleanup listener
+    process.off('close', exitHandler);
 
     this.activeProcesses.delete(agentId);
     this.releaseLock(agentId);
