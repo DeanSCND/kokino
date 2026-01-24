@@ -15,6 +15,7 @@ import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getMetricsCollector } from '../telemetry/MetricsCollector.js';
+import { buildClaudeEnvironment } from './AgentRunner.js';
 
 const CLI_COMMANDS = {
   'claude-code': 'claude',
@@ -137,32 +138,27 @@ export class EnvironmentDoctor {
    */
   checkEnvironment(cliType) {
     if (cliType === 'claude-code') {
+      // Validate the actual runtime environment, not process.env
+      const runtimeEnv = buildClaudeEnvironment();
+
       const issues = [];
 
       // Check CLAUDECODE flag
-      if (!process.env.CLAUDECODE) {
-        issues.push('CLAUDECODE not set');
+      if (!runtimeEnv.CLAUDECODE) {
+        issues.push('CLAUDECODE not set in runtime env');
       }
 
       // Check CLAUDE_CODE_ENTRYPOINT
-      if (!process.env.CLAUDE_CODE_ENTRYPOINT) {
-        issues.push('CLAUDE_CODE_ENTRYPOINT not set');
+      if (!runtimeEnv.CLAUDE_CODE_ENTRYPOINT) {
+        issues.push('CLAUDE_CODE_ENTRYPOINT not set in runtime env');
       }
 
       // CRITICAL: ANTHROPIC_API_KEY should NOT be set (forces API auth instead of subscription)
-      if (process.env.ANTHROPIC_API_KEY) {
+      if (runtimeEnv.ANTHROPIC_API_KEY) {
         issues.push('ANTHROPIC_API_KEY should be deleted (prevents subscription auth)');
       }
 
-      // Check PATH includes common locations
-      const path = process.env.PATH || '';
-      const missingPaths = [];
-      if (!path.includes('/opt/homebrew/bin')) missingPaths.push('/opt/homebrew/bin');
-      if (!path.includes('/usr/local/bin')) missingPaths.push('/usr/local/bin');
-
-      if (missingPaths.length > 0) {
-        issues.push(`PATH missing: ${missingPaths.join(', ')}`);
-      }
+      // PATH validation removed - checkBinary() already verifies CLI is executable
 
       if (issues.length > 0) {
         return {

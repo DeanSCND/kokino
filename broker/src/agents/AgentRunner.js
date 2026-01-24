@@ -24,7 +24,7 @@ import { AgentSessionManager } from './AgentSessionManager.js';
  *
  * CRITICAL: Must delete ANTHROPIC_API_KEY to force subscription auth!
  */
-function buildClaudeEnvironment() {
+export function buildClaudeEnvironment() {
   const HOME = process.env.HOME;
   const CLAUDE_DIR = path.join(HOME, '.claude');
 
