@@ -14,6 +14,7 @@ import { createGitHubRoutes } from './routes/github.js';
 import { jsonResponse, handleCors } from './utils/response.js';
 import { getMetricsCollector } from './telemetry/MetricsCollector.js';
 import { PrometheusExporter } from './telemetry/PrometheusExporter.js';
+import { EnvironmentDoctor } from './agents/EnvironmentDoctor.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
 const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
@@ -32,8 +33,29 @@ const ticketStore = new TicketStore(registry, agentRunner); // Pass agentRunner 
 const metricsCollector = getMetricsCollector();
 const prometheusExporter = new PrometheusExporter(metricsCollector);
 
+// Initialize environment doctor
+const environmentDoctor = new EnvironmentDoctor();
+
 console.log('[broker] ✓ AgentRunner initialized for headless execution');
 console.log('[broker] ✓ Telemetry & monitoring initialized');
+console.log('[broker] ✓ Environment Doctor initialized');
+
+// Run startup health check for claude-code (most common CLI)
+(async () => {
+  console.log('[broker] Running startup environment check for claude-code...');
+  const healthCheck = await environmentDoctor.check('claude-code');
+
+  if (!healthCheck.passed) {
+    console.error('[broker] ⚠️  WARNING: Environment check FAILED for claude-code');
+    console.error('[broker] Failed checks:', healthCheck.checks.filter(c => !c.passed).map(c => `${c.name}: ${c.message}`).join(', '));
+    console.error('[broker] Headless execution may not work properly.');
+  } else if (healthCheck.warnings.length > 0) {
+    console.warn('[broker] ⚠️  Environment check passed with warnings:');
+    healthCheck.warnings.forEach(w => console.warn(`[broker]   - ${w}`));
+  } else {
+    console.log('[broker] ✓ Environment check passed for claude-code');
+  }
+})();
 
 // Create route handlers
 const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository, agentRunner, conversationStore);
@@ -83,6 +105,20 @@ const server = http.createServer(async (req, res) => {
     // SLO/SLI status
     if (pathname === '/api/slo/status' && method === 'GET') {
       return jsonResponse(res, 200, metricsCollector.getSLIStatus());
+    }
+
+    // Environment health check
+    if (pathname === '/api/health/environment' && method === 'GET') {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const cliType = url.searchParams.get('cli');
+
+      if (cliType) {
+        const result = await environmentDoctor.check(cliType);
+        return jsonResponse(res, result.passed ? 200 : 503, result);
+      } else {
+        const result = await environmentDoctor.checkAll();
+        return jsonResponse(res, result.overall ? 200 : 503, result);
+      }
     }
 
     // Agent registration
