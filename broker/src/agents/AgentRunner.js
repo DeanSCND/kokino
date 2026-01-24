@@ -407,6 +407,8 @@ export class AgentRunner {
         '--dangerously-skip-permissions',  // REQUIRED for headless
         '-p', prompt,
         '--model', process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+        '--output-format', 'stream-json',  // Issue #110: Fix JSONL parsing
+        '--verbose',  // Required for stream-json output format
       ];
 
       // Session management: --session-id for NEW, --resume for EXISTING

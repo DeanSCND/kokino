@@ -22,7 +22,7 @@ export class AgentRegistry {
       type: type ?? existing?.type ?? 'unknown',
       commMode,
       metadata: { ...existing?.metadata, ...metadata },
-      status: 'online',
+      status: 'idle',  // Issue #110: Start in idle state, require explicit start
       lastHeartbeat: now,
       heartbeatIntervalMs: heartbeatIntervalMs ?? existing?.heartbeatIntervalMs ?? 30000
     };
@@ -91,5 +91,20 @@ export class AgentRegistry {
 
   size() {
     return this.repo.getAll().length;
+  }
+
+  // Issue #110: Agent lifecycle states (idle → starting → ready → busy → ready)
+  updateStatus(agentId, status, message = null) {
+    const updated = this.repo.updateStatus(agentId, status);
+    if (updated) {
+      console.log(`[registry] Status updated: ${agentId} → ${status}${message ? ` (${message})` : ''}`);
+      return this.repo.get(agentId);
+    }
+    return null;
+  }
+
+  getStatus(agentId) {
+    const agent = this.repo.get(agentId);
+    return agent ? agent.status : null;
   }
 }
