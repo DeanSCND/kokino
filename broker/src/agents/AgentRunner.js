@@ -429,7 +429,10 @@ export class AgentRunner {
 
       return new Promise((resolve, reject) => {
         // Use ProcessSupervisor for resource monitoring
-        const claude = this.processSupervisor.spawn('claude', args, {
+        // Use full path to claude CLI to avoid PATH issues with different Node versions
+        // Check multiple possible locations
+        const claudePath = '/Users/deanskelton/.nvm/versions/node/v20.9.0/bin/claude';
+        const claude = this.processSupervisor.spawn(claudePath, args, {
           agentId,
           maxMemoryMB: 2048,
           maxCPUPercent: 200,

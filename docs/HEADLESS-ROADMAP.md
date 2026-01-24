@@ -6,6 +6,8 @@ Transition from tmux-based terminal injection to headless subprocess execution f
 
 **Goal:** Fully migrate to headless mode with proven reliability.
 
+**Current State:** Both tmux and headless modes coexist in production. Agents can be configured with `commMode: 'tmux'`, `commMode: 'headless'`, or `commMode: 'shadow'` (runs both in parallel for testing). Runtime fallback allows operators to quickly disable headless for degraded CLIs.
+
 ---
 
 ## Phase 1: Core Implementation (3-5 days)
@@ -92,11 +94,14 @@ Build reliability guardrails before deprecating tmux.
 - UI fallback controls
 
 **#97 - Headless Load Testing** (2-3 days)
-- Burst test (100 messages)
-- Concurrency test (session locking)
+- Burst test (100 messages) - **tmux agents**
+- Burst test (100 messages) - **headless agents**
+- Concurrency test - **mixed mode** (tmux + headless agents)
 - Failure injection test
+- **Fallback scenario** - disable CLI mid-test, verify tmux takeover
+- **Shadow mode under load** - verify both branches execute
 - Soak test (1 hour sustained load)
-- Resource monitoring
+- Resource monitoring - **compare tmux vs headless** memory/CPU
 - CI integration
 
 **#93 - Shadow Mode Testing** (30 days) ⏱️ LONG-RUNNING
@@ -219,15 +224,24 @@ Phase 3:   #94 (Tmux Deprecation)
 
 ## Current Status
 
-- **Phase 1:** 60% complete (database + APIs done, UI pending)
-- **Phase 2:** 0% complete (issues created, not started)
-- **Phase 3:** 0% complete (blocked)
+- **Phase 1:** ✅ Complete (merged in PR #100)
+- **Phase 2:** 90% complete (9/10 issues done)
+  - ✅ #98 - Telemetry & Monitoring (merged PR #100)
+  - ✅ #89 - Session Manager (merged PR #101)
+  - ✅ #88 - Environment Doctor (merged PR #102)
+  - ✅ #90 - Subprocess Sandboxing (merged PR #103)
+  - ✅ #91 - JSONL Parser (merged PR #104)
+  - ✅ #92 - Conversation Integrity (merged PR #105)
+  - ✅ #93 - Shadow Mode Testing (merged PR #106)
+  - ✅ #96 - Runtime Fallback (merged PR #107)
+  - ✅ #95 - Operations Runbooks (merged PR #108)
+  - ⏳ #97 - Load Testing (ready to start)
+- **Phase 3:** 0% complete (blocked on shadow mode validation)
 
 **Next Actions:**
-1. Finish Phase 1 UI components (#86)
-2. Implement Telemetry Infrastructure (#98) - foundational for all monitoring
-3. Implement Session Manager (#89) - critical path
-4. Begin parallel work on #88, #90, #91, #92
+1. Execute #97 (Load Testing with dual-mode scenarios)
+2. Run shadow mode for 30 days
+3. Validate Phase 2 exit criteria before Phase 3
 
 ---
 
@@ -257,4 +271,4 @@ Phase 3:   #94 (Tmux Deprecation)
 
 ---
 
-*Last updated: 2025-01-23*
+*Last updated: 2025-01-24*

@@ -35,6 +35,9 @@ fi
 # Start broker
 echo "📡 Starting broker on port 5050..."
 cd "$BROKER_DIR"
+# Preserve NVM environment for headless CLI execution
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+export NVM_BIN="${NVM_BIN:-$NVM_DIR/versions/node/$(node -v)/bin}"
 npm start > /tmp/kokino-broker.log 2>&1 &
 BROKER_PID=$!
 echo "   Broker PID: $BROKER_PID"
