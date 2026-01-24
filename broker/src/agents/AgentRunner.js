@@ -19,6 +19,8 @@ import { AgentSessionManager } from './AgentSessionManager.js';
 import { ProcessSupervisor } from './ProcessSupervisor.js';
 import { CircuitBreaker } from './CircuitBreaker.js';
 import { LogRotator } from './LogRotator.js';
+import { JSONLParser } from './JSONLParser.js';
+import { CLIVersionTracker } from './CLIVersionTracker.js';
 
 /**
  * Build the full environment that Claude Code expects.
@@ -158,6 +160,8 @@ export class AgentRunner {
     this.processSupervisor = new ProcessSupervisor();
     this.circuitBreaker = new CircuitBreaker();
     this.logRotator = new LogRotator();
+    this.jsonlParser = new JSONLParser();
+    this.versionTracker = new CLIVersionTracker();
 
     // Active subprocess calls: agentId -> ChildProcess
     this.activeCalls = new Map();
@@ -177,7 +181,12 @@ export class AgentRunner {
       this.logRotator.cleanup();
     }, 86400000); // 24 hours
 
-    console.log('[AgentRunner] Initialized with ProcessSupervisor, CircuitBreaker, and LogRotator');
+    // Cleanup old CLI version records monthly
+    setInterval(() => {
+      this.versionTracker.cleanup(30);
+    }, 2592000000); // 30 days
+
+    console.log('[AgentRunner] Initialized with hardened JSONL parsing and CLI version tracking');
   }
 
   /**
@@ -387,6 +396,10 @@ export class AgentRunner {
   async runClaudeOnce({ agentId, prompt, cwd, timeoutMs = 300000 }) {
     const startTime = Date.now();
 
+    // Get agent to determine CLI type
+    const agent = await this.registry.get(agentId);
+    const cliType = agent?.type || 'claude-code';
+
     // Track success/failure with circuit breaker (check already done in execute())
     return this.circuitBreaker.execute(agentId, async () => {
       // Build CLI arguments
@@ -410,7 +423,6 @@ export class AgentRunner {
       }
 
       // Add MCP config if configured
-      const agent = await this.registry.get(agentId);
       if (agent?.metadata?.mcpConfigPath) {
         args.push('--mcp-config', agent.metadata.mcpConfigPath);
       }
@@ -467,20 +479,44 @@ export class AgentRunner {
 
           this.logRotator.writeEvent(agentId, 'PROCESS_EXITED', { code, durationMs });
 
+          // Capture CLI version (async, don't block)
+          setImmediate(() => {
+            this.versionTracker.capture(agentId, cliType);
+          });
+
           if (code !== 0) {
             reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`));
             return;
           }
 
-          const { response, sessionId } = parseClaudeStdout(stdout);
+          // Parse JSONL output with hardened parser
+          const parsed = this.jsonlParser.parse(stdout, {
+            agentId,
+            cliType,
+            strict: false // Don't fail on unknown events
+          });
+
+          // Log parsing warnings
+          if (parsed.unknownEvents.length > 0) {
+            console.warn(`[AgentRunner] ${parsed.unknownEvents.length} unknown JSONL events for ${agentId}`);
+          }
+          if (parsed.errors.length > 0) {
+            console.warn(`[AgentRunner] ${parsed.errors.length} JSONL parse errors for ${agentId}`);
+          }
 
           resolve({
             code,
-            response,
-            sessionId,
+            response: parsed.response,
+            sessionId: parsed.sessionId,
             durationMs,
             stdout,
             stderr,
+            usage: parsed.usage,
+            events: parsed.events,
+            parseWarnings: {
+              unknownEvents: parsed.unknownEvents,
+              errors: parsed.errors
+            }
           });
         });
 

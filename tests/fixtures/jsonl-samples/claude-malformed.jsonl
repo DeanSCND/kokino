@@ -1,0 +1,3 @@
+{"type":"result","result":"First valid line"}
+{this is not valid JSON}
+{"type":"result","result":"Final valid line after error","session_id":"test-session-999"}
