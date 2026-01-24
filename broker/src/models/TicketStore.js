@@ -197,7 +197,16 @@ export class TicketStore {
     const originAgent = this.registry ? this.registry.get(ticket.originAgent) : null;
 
     if (originAgent) {
-      const commMode = originAgent.commMode || 'tmux';
+      let commMode = originAgent.commMode || 'tmux';
+
+      // Check fallback controller - force tmux if headless disabled
+      if (this.fallbackController) {
+        const fallbackCheck = this.fallbackController.shouldUseTmux(originAgent);
+        if (fallbackCheck.useTmux && commMode !== 'tmux') {
+          console.warn(`[tickets] Fallback override for reply to ${ticket.originAgent}: ${fallbackCheck.reason} - using tmux`);
+          commMode = 'tmux'; // Force tmux for reply
+        }
+      }
 
       if (commMode === 'headless' && this.agentRunner) {
         // HEADLESS MODE: Direct execution via AgentRunner

@@ -2,7 +2,7 @@ import { jsonResponse, parseJson } from '../utils/response.js';
 import { execSync } from 'node:child_process';
 import { spawnAgentInTmux, killAgentTmux } from '../utils/spawn-agent.js';
 
-export function createAgentRoutes(registry, ticketStore, messageRepository = null, agentRunner = null, conversationStore = null) {
+export function createAgentRoutes(registry, ticketStore, messageRepository = null, agentRunner = null, conversationStore = null, fallbackController = null) {
   return {
     // POST /agents/register
     async register(req, res) {
@@ -257,6 +257,22 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
 
         if (!prompt) {
           return jsonResponse(res, 400, { error: 'prompt required' });
+        }
+
+        // Check fallback controller - reject if headless disabled
+        if (fallbackController) {
+          const agent = registry.get(agentId);
+          if (agent) {
+            const fallbackCheck = fallbackController.shouldUseTmux(agent);
+            if (fallbackCheck.useTmux) {
+              return jsonResponse(res, 503, {
+                error: 'Headless execution disabled for this agent',
+                reason: fallbackCheck.reason,
+                fallbackMode: 'tmux',
+                message: 'Agent is in fallback mode. Use tmux watcher for delivery instead of direct execute endpoint.'
+              });
+            }
+          }
         }
 
         const result = await agentRunner.execute(agentId, prompt, {
