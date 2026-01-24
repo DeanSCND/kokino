@@ -74,11 +74,24 @@ export class ShadowModeController {
     const startTime = Date.now();
 
     try {
-      // CRITICAL: Temporarily mark ticket as tmux-only to avoid re-triggering shadow mode
-      // We'll create a pending ticket that the watcher will poll and deliver to tmux
+      // CRITICAL: Shadow agents don't have tmux watchers running
+      // We need to target a tmux-mode alias agent instead
+      // Format: {agentId}-tmux (e.g., "alice-tmux")
+      const tmuxAgentId = `${agentId}-tmux`;
+
+      // Check if tmux agent exists
+      const tmuxAgent = this.agentRunner.registry.get(tmuxAgentId);
+      if (!tmuxAgent) {
+        throw new Error(
+          `Shadow mode requires a tmux agent '${tmuxAgentId}' to be registered. ` +
+          `Please start a tmux watcher for agent '${tmuxAgentId}' with comm_mode: 'tmux'.`
+        );
+      }
+
+      // Create pending ticket targeting the tmux agent (not the shadow agent)
       const tmuxTicket = this.ticketStore.repo.save({
         ticketId: `${ticket.ticketId}-tmux`,
-        targetAgent: agentId,
+        targetAgent: tmuxAgentId, // Target the tmux agent, not shadow agent
         originAgent: ticket.originAgent,
         payload: ticket.payload,
         metadata: JSON.stringify({
