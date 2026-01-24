@@ -367,6 +367,84 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
         console.error(`[conversations/${conversationId}/delete] Error:`, error);
         jsonResponse(res, 500, { error: error.message });
       }
+    },
+
+    // GET /agents/processes/status - Get process supervisor status
+    async getProcessStatus(req, res) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        const processes = agentRunner.processSupervisor.getStatus();
+        jsonResponse(res, 200, { processes });
+      } catch (error) {
+        console.error('[agents/processes/status] Error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // GET /agents/circuits/status - Get circuit breaker status
+    async getCircuitStatus(req, res) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        const circuits = agentRunner.circuitBreaker.getStatus();
+        jsonResponse(res, 200, { circuits });
+      } catch (error) {
+        console.error('[agents/circuits/status] Error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // POST /agents/:agentId/circuit/reset - Reset circuit breaker for agent
+    async resetCircuit(req, res, agentId) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        agentRunner.circuitBreaker.reset(agentId);
+        jsonResponse(res, 200, { status: 'reset', agentId });
+      } catch (error) {
+        console.error(`[agents/${agentId}/circuit/reset] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // GET /agents/logs/status - Get log rotator status
+    async getLogStatus(req, res) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        const logs = agentRunner.logRotator.getStats();
+        jsonResponse(res, 200, { logs });
+      } catch (error) {
+        console.error('[agents/logs/status] Error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // GET /agents/:agentId/logs - Get recent logs for agent
+    async getLogs(req, res, agentId) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const lines = parseInt(url.searchParams.get('lines')) || 100;
+
+        const content = agentRunner.logRotator.read(agentId, lines);
+        jsonResponse(res, 200, { agentId, lines, content });
+      } catch (error) {
+        console.error(`[agents/${agentId}/logs] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
     }
   };
 }

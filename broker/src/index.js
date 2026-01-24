@@ -280,6 +280,35 @@ const server = http.createServer(async (req, res) => {
       return await messageRoutes.getAgentMessages(req, res, agentId);
     }
 
+    // Process supervisor status
+    if (pathname === '/agents/processes/status' && method === 'GET') {
+      return await agentRoutes.getProcessStatus(req, res);
+    }
+
+    // Circuit breaker status
+    if (pathname === '/agents/circuits/status' && method === 'GET') {
+      return await agentRoutes.getCircuitStatus(req, res);
+    }
+
+    // Reset circuit breaker for agent
+    const resetCircuitMatch = pathname.match(/^\/agents\/([^\/]+)\/circuit\/reset$/);
+    if (resetCircuitMatch && method === 'POST') {
+      const agentId = resetCircuitMatch[1];
+      return await agentRoutes.resetCircuit(req, res, agentId);
+    }
+
+    // Log rotator status
+    if (pathname === '/agents/logs/status' && method === 'GET') {
+      return await agentRoutes.getLogStatus(req, res);
+    }
+
+    // Agent logs
+    const logsMatch = pathname.match(/^\/agents\/([^\/]+)\/logs$/);
+    if (logsMatch && method === 'GET') {
+      const agentId = logsMatch[1];
+      return await agentRoutes.getLogs(req, res, agentId);
+    }
+
     // Phase 9: GitHub OAuth
     if (pathname === '/api/github/oauth' && method === 'POST') {
       return await githubRoutes.exchangeOAuthCode(req, res);
