@@ -22,7 +22,15 @@ export class PrometheusExporter {
     lines.push('# HELP headless_executions_total Total number of headless executions');
     lines.push('# TYPE headless_executions_total counter');
     for (const row of data.headless_executions_total) {
-      const status = row.success ? 'success' : 'failure';
+      // Distinguish success/failure/timeout in status label
+      let status;
+      if (row.event === 'EXECUTION_TIMEOUT') {
+        status = 'timeout';
+      } else if (row.success) {
+        status = 'success';
+      } else {
+        status = 'failure';
+      }
       const labels = `agent_id="${row.agent_id}",cli_type="${row.cli_type || 'unknown'}",status="${status}"`;
       lines.push(`headless_executions_total{${labels}} ${row.count}`);
     }
