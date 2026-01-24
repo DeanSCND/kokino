@@ -18,12 +18,32 @@ Kokino is a fully functional multi-agent orchestration platform with real-time m
 
 ## Architecture
 
+### Dual-Mode Agent Communication
+
+Kokino supports two agent communication modes that coexist in production:
+
+1. **Tmux Mode** (Legacy) - Terminal injection via tmux sessions with polling-based watchers
+2. **Headless Mode** (Modern) - Direct CLI subprocess execution with structured conversation history
+
+Agents can be configured with `commMode: 'tmux'`, `'headless'`, or `'shadow'` (runs both in parallel for testing). Runtime fallback allows operators to quickly disable headless mode for degraded CLIs.
+
+**Why Both Modes?**
+- Gradual migration from tmux → headless
+- Production fallback during headless degradation
+- Shadow mode testing validates headless reliability before tmux deprecation
+
+See [docs/HEADLESS-ROADMAP.md](docs/HEADLESS-ROADMAP.md) for migration plan.
+
 ```
 kokino/
-├── ui/           # React frontend (Phase 1-3: UI mockup and validation)
-├── broker/       # Message broker (Phase 4+: Real backend integration)
-├── mcp/          # MCP server (Phase 4+: Agent communication tools)
-└── docs/         # Documentation
+├── ui/           # React frontend
+├── broker/       # Message broker with dual-mode routing
+│   ├── src/agents/           # AgentRunner (headless), ProcessManager (tmux)
+│   ├── src/db/               # SQLite: tickets, conversations, shadow_results
+│   └── src/telemetry/        # SLO tracking, circuit breakers
+├── mcp/          # MCP server (agent-bridge)
+├── scripts/      # Diagnostic & maintenance scripts
+└── docs/         # Documentation & runbooks
 ```
 
 ## Features
@@ -209,7 +229,13 @@ Kokino builds on proven concepts from the agent-collab POC:
 **Health**
 - `GET /health` - Broker health check
 
-See `/docs/` for detailed API documentation.
+**Headless Execution (Phase 2)**
+- `POST /agents/:id/execute` - Execute headless agent
+- `GET /agents/sessions/status` - View session status
+- `POST /api/fallback/cli/disable` - Disable headless for CLI
+- `GET /api/shadow-mode/metrics` - Shadow mode testing metrics
+
+See [`/docs/API.md`](docs/API.md) for complete API documentation and [`/docs/ops/`](docs/ops/) for operational runbooks.
 
 ## Project Structure
 

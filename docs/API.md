@@ -479,4 +479,395 @@ print('Reply:', reply.json()['response'])
 
 ---
 
-For more information, see the [README](../README.md) or visit the [GitHub repository](https://github.com/yourusername/kokino).
+## Headless Execution Endpoints (Phase 2)
+
+### Execute Headless Agent
+
+```http
+POST /agents/:agentId/execute
+Content-Type: application/json
+
+{
+  "prompt": "string",
+  "timeoutMs": 30000,
+  "metadata": {}
+}
+```
+
+**Response:**
+```json
+{
+  "turnId": "uuid",
+  "content": "agent response",
+  "conversationId": "uuid",
+  "sessionId": "string",
+  "durationMs": 3245,
+  "success": true
+}
+```
+
+### Cancel Execution
+
+```http
+POST /agents/:agentId/execute/cancel
+```
+
+### End Session
+
+```http
+POST /agents/:agentId/end-session
+```
+
+### Get Session Status
+
+```http
+GET /agents/sessions/status
+```
+
+**Response:**
+```json
+[
+  {
+    "agentId": "frontend-mary",
+    "sessionId": "frontend-mary",
+    "hasSession": true,
+    "locked": false,
+    "executing": false,
+    "executionStartedAt": null,
+    "queueLength": 0
+  }
+]
+```
+
+### Get Agent Conversations
+
+```http
+GET /agents/:agentId/conversations
+```
+
+### Get Conversation Details
+
+```http
+GET /conversations/:conversationId
+```
+
+**Response:**
+```json
+{
+  "conversationId": "uuid",
+  "agentId": "frontend-mary",
+  "cliType": "claude-code",
+  "sessionId": "frontend-mary",
+  "status": "active",
+  "createdAt": "2025-01-24T...",
+  "updatedAt": "2025-01-24T...",
+  "turns": [
+    {
+      "turnId": "uuid",
+      "direction": "inbound",
+      "content": "Please review the code",
+      "metadata": {},
+      "createdAt": "2025-01-24T..."
+    }
+  ]
+}
+```
+
+### Delete Conversation
+
+```http
+DELETE /conversations/:conversationId
+```
+
+---
+
+## Process & Resource Management
+
+### Get Process Status
+
+```http
+GET /agents/processes/status
+```
+
+### Get Circuit Breaker Status
+
+```http
+GET /agents/circuits/status
+```
+
+**Response:**
+```json
+{
+  "circuits": [
+    {
+      "agentId": "frontend-mary",
+      "state": "closed",
+      "failureCount": 0,
+      "lastFailure": null
+    }
+  ]
+}
+```
+
+### Reset Circuit Breaker
+
+```http
+POST /agents/:agentId/circuit/reset
+```
+
+### Get Log Rotator Status
+
+```http
+GET /agents/logs/status
+```
+
+### Get Agent Logs
+
+```http
+GET /agents/:agentId/logs?lines=100
+```
+
+**Response:**
+```json
+{
+  "agentId": "frontend-mary",
+  "lines": 100,
+  "content": "log content here"
+}
+```
+
+---
+
+## Data Integrity
+
+### Run Integrity Check
+
+```http
+GET /api/integrity/check
+```
+
+**Response:**
+```json
+{
+  "passed": true,
+  "orphanedTurns": 0,
+  "conversationsWithIssues": 0,
+  "details": {
+    "orphanCheck": { "passed": true, "count": 0 },
+    "sequenceChecks": []
+  }
+}
+```
+
+### Cleanup Orphaned Data
+
+```http
+POST /api/integrity/cleanup
+```
+
+### Get Integrity Stats
+
+```http
+GET /api/integrity/stats
+```
+
+---
+
+## Shadow Mode Testing
+
+### Get Shadow Metrics
+
+```http
+GET /api/shadow-mode/metrics?days=30
+```
+
+**Response:**
+```json
+{
+  "totalTests": 1250,
+  "successRates": {
+    "tmux": 0.996,
+    "headless": 0.998
+  },
+  "outputMatchRate": 0.957,
+  "avgLatencyDelta": -2350,
+  "headlessFaster": 0.892
+}
+```
+
+### Get Shadow Mismatches
+
+```http
+GET /api/shadow-mode/mismatches?limit=20
+```
+
+### Get Shadow Failures
+
+```http
+GET /api/shadow-mode/failures?mode=headless
+```
+
+---
+
+## Runtime Fallback Control
+
+### Get Fallback Status
+
+```http
+GET /api/fallback/status
+```
+
+**Response:**
+```json
+{
+  "disabledCLIs": [
+    {
+      "cli": "claude-code",
+      "disabled": true,
+      "reason": "Auth token expired",
+      "since": "2025-01-24T..."
+    }
+  ],
+  "forcedFallbacks": []
+}
+```
+
+### Disable CLI Headless Mode
+
+```http
+POST /api/fallback/cli/disable
+Content-Type: application/json
+
+{
+  "cliType": "claude-code",
+  "reason": "Production incident"
+}
+```
+
+### Enable CLI Headless Mode
+
+```http
+POST /api/fallback/cli/enable
+Content-Type: application/json
+
+{
+  "cliType": "claude-code"
+}
+```
+
+### Force Agent to Tmux
+
+```http
+POST /api/fallback/agent/:agentId/force
+Content-Type: application/json
+
+{
+  "reason": "Agent degraded"
+}
+```
+
+### Clear Agent Fallback
+
+```http
+DELETE /api/fallback/agent/:agentId
+```
+
+---
+
+## Environment Health
+
+### Check Environment
+
+```http
+GET /api/health/environment?cli=claude-code
+```
+
+**Response:**
+```json
+{
+  "cliType": "claude-code",
+  "passed": true,
+  "checks": [
+    {
+      "name": "binary",
+      "passed": true,
+      "message": "claude found at /usr/local/bin/claude"
+    },
+    {
+      "name": "environment",
+      "passed": true,
+      "message": "Environment variables correct"
+    },
+    {
+      "name": "auth",
+      "passed": true,
+      "message": "Auth credentials found"
+    },
+    {
+      "name": "disk",
+      "passed": true,
+      "message": "Disk 45% full - 120Gi available"
+    },
+    {
+      "name": "dryrun",
+      "passed": true,
+      "message": "CLI responds to --version"
+    }
+  ],
+  "warnings": []
+}
+```
+
+---
+
+## Telemetry & Metrics
+
+### Get SLO Status
+
+```http
+GET /api/metrics/slo
+```
+
+**Response:**
+```json
+{
+  "availability": {
+    "current": 0.998,
+    "target": 0.995,
+    "breached": false,
+    "errorBudgetRemaining": 0.85
+  },
+  "latency": {
+    "p95Ms": 28500,
+    "target": 30000,
+    "breached": false
+  }
+}
+```
+
+### Get Prometheus Metrics
+
+```http
+GET /api/metrics/prometheus
+```
+
+**Response:** (Prometheus exposition format)
+```
+# HELP headless_availability_ratio Headless execution availability
+# TYPE headless_availability_ratio gauge
+headless_availability_ratio 0.998
+
+# HELP headless_latency_p95_ms P95 execution latency in milliseconds
+# TYPE headless_latency_p95_ms gauge
+headless_latency_p95_ms 28500
+```
+
+### Get Error Budget
+
+```http
+GET /api/metrics/error-budget
+```
+
+---
+
+For more information, see the [README](../README.md), [HEADLESS-ROADMAP.md](HEADLESS-ROADMAP.md), or visit the [GitHub repository](https://github.com/yourusername/kokino).

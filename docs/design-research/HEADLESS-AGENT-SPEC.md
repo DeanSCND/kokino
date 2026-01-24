@@ -1,5 +1,41 @@
 # Headless Agent Communication Specification
 
+## Implementation Status
+
+**Status:** ✅ **Implemented & Production Ready**
+**Date:** 2025-01-24
+**Implementation Phase:** Phase 1 & 2 Complete
+**Reference Implementation:** [Network Chuck's claude-phone](https://github.com/theNetworkChuck/claude-phone)
+
+### Completed Features
+
+- ✅ AgentRunner service with CLI invocation (`broker/src/agents/AgentRunner.js`)
+- ✅ Conversation/turns database tables (`broker/src/db/schema.js`)
+- ✅ ConversationStore CRUD operations (`broker/src/db/ConversationStore.js`)
+- ✅ Session Manager with locks & cancellation (`broker/src/agents/AgentSessionManager.js`)
+- ✅ API endpoints (`/execute`, `/conversation`, `/end-session`)
+- ✅ Message routing (dual-mode: tmux vs headless) (`broker/src/models/TicketStore.js`)
+- ✅ Environment Doctor & self-checks (`broker/src/agents/EnvironmentDoctor.js`)
+- ✅ Circuit breaker & resource limits (`broker/src/agents/CircuitBreaker.js`, `ProcessSupervisor.js`)
+- ✅ JSONL parser with schema validation (`broker/src/utils/jsonlParser.js`)
+- ✅ Shadow mode testing (`broker/src/agents/ShadowModeController.js`)
+- ✅ Runtime fallback toggle (`broker/src/agents/FallbackController.js`)
+- ✅ Telemetry & SLO tracking (`broker/src/telemetry/MetricsCollector.js`)
+
+### Deviations from Original Spec
+
+- **UI Components:** AgentChatPanel and related UI components not yet implemented (tmux terminal viewer still in use)
+- **Dual-Mode Coexistence:** Both tmux and headless modes coexist (original spec assumed full replacement)
+- **Store & Forward Integration:** Headless integrated with existing ticket system rather than replacing it
+
+### Related Documentation
+
+- [HEADLESS-ROADMAP.md](../HEADLESS-ROADMAP.md) - Migration roadmap & current status
+- [SLO-TARGETS.md](../SLO-TARGETS.md) - Service level objectives
+- [docs/ops/](../ops/) - Operational runbooks
+
+---
+
 ## Overview
 
 This document specifies a **second communication method** for Kokino that replaces the tmux-based terminal injection pattern with direct headless CLI invocation. This approach provides:
@@ -9,10 +45,9 @@ This document specifies a **second communication method** for Kokino that replac
 3. **Simplified architecture** - No watchers, no buffer injection, no terminal state detection
 4. **Multi-CLI support** - Claude Code, Factory Droid, Gemini CLI
 
-**Status:** Design Proposal
-**Date:** 2025-01-23
+**Original Status:** Design Proposal
+**Original Date:** 2025-01-23
 **Priority:** High
-**Reference Implementation:** [Network Chuck's claude-phone](https://github.com/theNetworkChuck/claude-phone)
 
 ---
 
