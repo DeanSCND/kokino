@@ -211,8 +211,8 @@ export class AgentRunner {
 
     // Check commMode from both agent root and metadata
     const commMode = agent.commMode || agent.metadata?.commMode || 'tmux';
-    if (commMode !== 'headless') {
-      throw new Error(`Agent ${agentId} is not in headless mode (current: ${commMode})`);
+    if (commMode !== 'headless' && commMode !== 'shadow') {
+      throw new Error(`Agent ${agentId} is not in headless/shadow mode (current: ${commMode})`);
     }
 
     // CRITICAL: Check circuit breaker BEFORE acquiring lock (for load shedding)

@@ -60,14 +60,11 @@ export class ShadowModeController {
   }
 
   /**
-   * Run tmux delivery for ticket
+   * Run tmux delivery for ticket (Store & Forward pattern)
    *
-   * NOTE: Shadow mode is currently simplified to compare headless execution
-   * against headless execution with different CLI flags or configurations.
-   * True tmux vs headless comparison requires refactoring tmux delivery
-   * into a standalone runner similar to AgentRunner.
-   *
-   * For now, this runs headless mode as "tmux baseline" for comparison.
+   * Creates a pending ticket and waits for watcher to poll and respond.
+   * This exercises the full tmux stack: ticket creation → watcher poll →
+   * tmux delivery → watcher reply.
    *
    * @param {string} agentId - Target agent ID
    * @param {object} ticket - Ticket to execute
@@ -77,17 +74,54 @@ export class ShadowModeController {
     const startTime = Date.now();
 
     try {
-      // For now, run headless as baseline (tmux integration TBD)
-      const result = await this.agentRunner.execute(agentId, ticket.payload, {
+      // CRITICAL: Temporarily mark ticket as tmux-only to avoid re-triggering shadow mode
+      // We'll create a pending ticket that the watcher will poll and deliver to tmux
+      const tmuxTicket = this.ticketStore.repo.save({
+        ticketId: `${ticket.ticketId}-tmux`,
+        targetAgent: agentId,
+        originAgent: ticket.originAgent,
+        payload: ticket.payload,
+        metadata: JSON.stringify({
+          ...ticket.metadata,
+          shadowMode: 'tmux-baseline',
+          originalTicketId: ticket.ticketId,
+        }),
+        expectReply: 1,
         timeoutMs: ticket.timeoutMs,
-        metadata: { shadowMode: 'baseline' },
+        status: 'pending',
+        response: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Initialize waiter set for this ticket
+      this.ticketStore.waiters.set(tmuxTicket.ticketId, new Set());
+
+      // Wait for watcher to poll, deliver, and respond
+      const response = await new Promise((resolve, reject) => {
+        const waiter = (reply) => {
+          if (!reply) {
+            reject(new Error('Tmux delivery timeout or no response'));
+          } else {
+            resolve(reply);
+          }
+        };
+
+        // Add waiter to ticket
+        this.ticketStore.addWaiter(tmuxTicket.ticketId, waiter);
+
+        // Set timeout
+        setTimeout(() => {
+          this.ticketStore.timeout(tmuxTicket.ticketId);
+          reject(new Error('Tmux delivery timeout'));
+        }, ticket.timeoutMs);
       });
 
       const durationMs = Date.now() - startTime;
 
       return {
         success: true,
-        response: result.response,
+        response: response.response || response,
         durationMs,
         error: null,
       };
@@ -245,9 +279,9 @@ export class ShadowModeController {
    * @param {number} totalDuration - Total duration in ms
    */
   emitShadowTelemetry(agentId, comparison, totalDuration) {
-    // Emit mismatch event if outputs don't match
+    // Emit mismatch event if outputs don't match (for SLO tracking)
     if (comparison.tmuxSuccess && comparison.headlessSuccess && !comparison.outputMatch) {
-      this.metrics.record('SHADOW_OUTPUT_MISMATCH', agentId, {
+      this.metrics.record('SHADOW_MISMATCH', agentId, {
         metadata: {
           latencyDelta: comparison.latencyDelta,
           tmuxDuration: comparison.tmuxDuration,
