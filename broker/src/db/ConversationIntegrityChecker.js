@@ -36,9 +36,16 @@ export class ConversationIntegrityChecker {
     if (orphans.length > 0) {
       console.warn(`[IntegrityChecker] Found ${orphans.length} orphaned turns`);
 
-      this.metrics.record('INTEGRITY_ORPHANS', 'system', {
-        metadata: { count: orphans.length }
-      });
+      // Emit each orphan as ORPHAN_DETECTED for SLO tracking
+      for (const orphan of orphans) {
+        this.metrics.record('ORPHAN_DETECTED', 'system', {
+          metadata: {
+            turnId: orphan.turn_id,
+            conversationId: orphan.conversation_id,
+            totalOrphans: orphans.length
+          }
+        });
+      }
     }
 
     return orphans;
@@ -104,11 +111,13 @@ export class ConversationIntegrityChecker {
     if (issues.length > 0) {
       console.warn(`[IntegrityChecker] Conversation ${conversationId} has ${issues.length} issues`);
 
-      this.metrics.record('INTEGRITY_SEQUENCE_ISSUES', conversationId, {
+      // Emit CONVERSATION_INTEGRITY_FAIL for SLO tracking
+      this.metrics.record('CONVERSATION_INTEGRITY_FAIL', conversationId, {
         metadata: {
           conversationId,
           issueCount: issues.length,
-          issueTypes: [...new Set(issues.map(i => i.type))]
+          issueTypes: [...new Set(issues.map(i => i.type))],
+          issues: issues.map(i => ({ type: i.type, turnId: i.turnId, message: i.message }))
         }
       });
     }
@@ -164,17 +173,8 @@ export class ConversationIntegrityChecker {
 
     results.durationMs = Date.now() - startTime;
 
-    // Emit summary telemetry
+    // Log summary (individual failures already emitted above)
     const hasIssues = results.orphanedTurns > 0 || results.conversationsWithIssues > 0;
-
-    this.metrics.record(hasIssues ? 'INTEGRITY_CHECK_FAILED' : 'INTEGRITY_CHECK_PASSED', 'system', {
-      durationMs: results.durationMs,
-      metadata: {
-        orphanedTurns: results.orphanedTurns,
-        conversationsWithIssues: results.conversationsWithIssues,
-        totalConversations: results.totalConversations
-      }
-    });
 
     if (hasIssues) {
       console.error(`[IntegrityChecker] ✗ Integrity check FAILED: ${results.orphanedTurns} orphans, ${results.conversationsWithIssues}/${results.totalConversations} conversations with issues`);
@@ -199,9 +199,8 @@ export class ConversationIntegrityChecker {
     if (result.changes > 0) {
       console.log(`[IntegrityChecker] Cleaned up ${result.changes} orphaned turns`);
 
-      this.metrics.record('INTEGRITY_ORPHANS_CLEANED', 'system', {
-        metadata: { count: result.changes }
-      });
+      // Note: Cleanup is a repair action, not a failure event
+      // SLO tracks ORPHAN_DETECTED, not cleanup operations
     }
 
     return result.changes;
