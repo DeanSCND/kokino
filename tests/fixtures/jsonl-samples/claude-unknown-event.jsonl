@@ -1,0 +1,2 @@
+{"type":"new_experimental_event","data":"This event type doesn't exist in schema"}
+{"type":"result","result":"Response after unknown event","session_id":"test-session-789"}
