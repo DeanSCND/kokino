@@ -4,10 +4,11 @@ import { TicketRepository } from '../db/TicketRepository.js';
 // Ticket correlation system with SQLite persistence for Store & Forward pattern
 
 export class TicketStore {
-  constructor(registry = null, agentRunner = null) {
+  constructor(registry = null, agentRunner = null, shadowModeController = null) {
     this.repo = new TicketRepository();
     this.registry = registry; // Optional: for checking agent existence
     this.agentRunner = agentRunner; // For headless agent execution
+    this.shadowModeController = shadowModeController; // For shadow mode testing
     // Waiters are runtime-only (not persisted - they're for long-poll HTTP connections)
     this.waiters = new Map(); // ticketId -> Set of callback functions
 
@@ -47,10 +48,11 @@ export class TicketStore {
   }
 
   /**
-   * Deliver ticket to target agent based on commMode (headless vs tmux)
+   * Deliver ticket to target agent based on commMode (headless vs tmux vs shadow)
    *
    * HEADLESS: Direct execution via AgentRunner
    * TMUX: Store & Forward (ticket stays pending for watcher to poll)
+   * SHADOW: Parallel execution of both tmux and headless for testing
    */
   async deliverTicket(ticket) {
     const agent = this.registry ? this.registry.get(ticket.targetAgent) : null;
@@ -61,6 +63,39 @@ export class TicketStore {
     }
 
     const commMode = agent.commMode || agent.metadata?.commMode || 'tmux';
+
+    // SHADOW MODE: Run both tmux and headless in parallel for testing
+    if (commMode === 'shadow' && this.shadowModeController) {
+      console.log(`[tickets] Delivering ticket ${ticket.ticketId} in SHADOW MODE (parallel tmux + headless)`);
+
+      try {
+        const result = await this.shadowModeController.executeInShadowMode(
+          ticket.targetAgent,
+          ticket
+        );
+
+        // Auto-respond with primary result (tmux during shadow phase)
+        this.respond(ticket.ticketId, result.response, {
+          mode: 'shadow',
+          durationMs: result.durationMs,
+          success: result.success
+        });
+
+        console.log(`[tickets] Shadow mode delivery complete for ticket ${ticket.ticketId}`);
+
+      } catch (error) {
+        console.error(`[tickets] Shadow mode execution failed for ticket ${ticket.ticketId}:`, error.message);
+
+        // Respond with error
+        this.respond(ticket.ticketId, null, {
+          error: error.message,
+          mode: 'shadow',
+          success: false
+        });
+      }
+
+      return;
+    }
 
     if (commMode === 'headless' && this.agentRunner) {
       // HEADLESS MODE: Execute immediately via AgentRunner

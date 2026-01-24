@@ -9,6 +9,7 @@ import { MessageRepository } from './db/MessageRepository.js';
 import { ConversationStore } from './db/ConversationStore.js';
 import { ConversationIntegrityChecker } from './db/ConversationIntegrityChecker.js';
 import { AgentRunner } from './agents/AgentRunner.js';
+import { ShadowModeController } from './agents/ShadowModeController.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createMessageRoutes } from './routes/messages.js';
 import { createGitHubRoutes } from './routes/github.js';
@@ -28,7 +29,14 @@ const registry = new AgentRegistry();
 const messageRepository = new MessageRepository();
 const conversationStore = new ConversationStore();
 const agentRunner = new AgentRunner(registry, conversationStore);
-const ticketStore = new TicketStore(registry, agentRunner); // Pass agentRunner for dual-mode routing
+
+// Initialize shadow mode controller (must be before TicketStore)
+const shadowModeController = new ShadowModeController(null, agentRunner); // ticketStore passed after creation
+
+const ticketStore = new TicketStore(registry, agentRunner, shadowModeController); // Pass shadowModeController for shadow mode
+
+// Wire ticketStore back into shadowModeController (circular dependency)
+shadowModeController.ticketStore = ticketStore;
 
 // Initialize telemetry
 const metricsCollector = getMetricsCollector();
@@ -41,6 +49,7 @@ const environmentDoctor = new EnvironmentDoctor();
 const integrityChecker = new ConversationIntegrityChecker();
 
 console.log('[broker] ✓ AgentRunner initialized for headless execution');
+console.log('[broker] ✓ ShadowModeController initialized for parallel testing');
 console.log('[broker] ✓ Telemetry & monitoring initialized');
 console.log('[broker] ✓ Environment Doctor initialized');
 console.log('[broker] ✓ Conversation Integrity Checker initialized');
@@ -170,6 +179,31 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/integrity/stats' && method === 'GET') {
       const stats = integrityChecker.getStats();
       return jsonResponse(res, 200, stats);
+    }
+
+    // Shadow mode metrics
+    if (pathname === '/api/shadow-mode/metrics' && method === 'GET') {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const days = Number(url.searchParams.get('days')) || 30;
+      const metrics = shadowModeController.getShadowMetrics(days);
+      return jsonResponse(res, 200, metrics);
+    }
+
+    // Shadow mode failures
+    if (pathname === '/api/shadow-mode/failures' && method === 'GET') {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const mode = url.searchParams.get('mode') || 'headless';
+      const limit = Number(url.searchParams.get('limit')) || 100;
+      const failures = shadowModeController.getShadowFailures(mode, limit);
+      return jsonResponse(res, 200, failures);
+    }
+
+    // Shadow mode output mismatches
+    if (pathname === '/api/shadow-mode/mismatches' && method === 'GET') {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const limit = Number(url.searchParams.get('limit')) || 100;
+      const mismatches = shadowModeController.getShadowMismatches(limit);
+      return jsonResponse(res, 200, mismatches);
     }
 
     // Agent registration
