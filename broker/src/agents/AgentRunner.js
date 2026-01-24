@@ -386,6 +386,29 @@ export class AgentRunner {
   }
 
   /**
+   * Build system context that teaches agents about Kokino and inter-agent communication.
+   * Issue #112: Agents need context to know they should use MCP tools for team collaboration.
+   */
+  buildSystemContext(agent) {
+    const templatePath = path.join(process.cwd(), 'broker', 'prompts', 'agent-system-context.md');
+
+    if (!fs.existsSync(templatePath)) {
+      console.warn(`[AgentRunner] System context template not found: ${templatePath}`);
+      return '';
+    }
+
+    let template = fs.readFileSync(templatePath, 'utf8');
+
+    // Replace template variables
+    template = template
+      .replace(/\{\{agentId\}\}/g, agent.agentId || 'unknown')
+      .replace(/\{\{role\}\}/g, agent.metadata?.role || 'general-purpose')
+      .replace(/\{\{status\}\}/g, agent.status || 'unknown');
+
+    return template;
+  }
+
+  /**
    * Execute a single prompt against Claude Code CLI
    *
    * Reference: Network Chuck's runClaudeOnce()
@@ -402,10 +425,14 @@ export class AgentRunner {
 
     // Track success/failure with circuit breaker (check already done in execute())
     return this.circuitBreaker.execute(agentId, async () => {
+      // Issue #112: Inject system context to teach agents about inter-agent communication
+      const systemContext = this.buildSystemContext(agent);
+      const fullPrompt = systemContext ? `${systemContext}\n\n---\n\n${prompt}` : prompt;
+
       // Build CLI arguments
       const args = [
         '--dangerously-skip-permissions',  // REQUIRED for headless
-        '-p', prompt,
+        '-p', fullPrompt,  // Issue #112: Include system context
         '--model', process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
         '--output-format', 'stream-json',  // Issue #110: Fix JSONL parsing
         '--verbose',  // Required for stream-json output format
