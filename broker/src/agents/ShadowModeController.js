@@ -89,16 +89,18 @@ export class ShadowModeController {
       }
 
       // Create pending ticket targeting the tmux agent (not the shadow agent)
-      const tmuxTicket = this.ticketStore.repo.save({
-        ticketId: `${ticket.ticketId}-tmux`,
+      const tmuxTicketId = `${ticket.ticketId}-tmux`;
+
+      this.ticketStore.repo.save({
+        ticketId: tmuxTicketId,
         targetAgent: tmuxAgentId, // Target the tmux agent, not shadow agent
         originAgent: ticket.originAgent,
         payload: ticket.payload,
-        metadata: JSON.stringify({
+        metadata: {
           ...ticket.metadata,
           shadowMode: 'tmux-baseline',
           originalTicketId: ticket.ticketId,
-        }),
+        },
         expectReply: 1,
         timeoutMs: ticket.timeoutMs,
         status: 'pending',
@@ -108,7 +110,7 @@ export class ShadowModeController {
       });
 
       // Initialize waiter set for this ticket
-      this.ticketStore.waiters.set(tmuxTicket.ticketId, new Set());
+      this.ticketStore.waiters.set(tmuxTicketId, new Set());
 
       // Wait for watcher to poll, deliver, and respond
       const response = await new Promise((resolve, reject) => {
@@ -121,11 +123,11 @@ export class ShadowModeController {
         };
 
         // Add waiter to ticket
-        this.ticketStore.addWaiter(tmuxTicket.ticketId, waiter);
+        this.ticketStore.addWaiter(tmuxTicketId, waiter);
 
         // Set timeout
         setTimeout(() => {
-          this.ticketStore.timeout(tmuxTicket.ticketId);
+          this.ticketStore.timeout(tmuxTicketId);
           reject(new Error('Tmux delivery timeout'));
         }, ticket.timeoutMs);
       });
