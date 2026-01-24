@@ -45,6 +45,11 @@ setInterval(() => {
   ticketStore.cleanup(60000); // Remove tickets older than 1 minute
 }, 60000);
 
+// Cleanup old metrics daily (90-day retention)
+setInterval(() => {
+  metricsCollector.cleanup(90); // Remove metrics older than 90 days
+}, 86400000); // 24 hours
+
 // HTTP Server
 const server = http.createServer(async (req, res) => {
   // Handle CORS preflight

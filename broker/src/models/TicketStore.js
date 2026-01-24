@@ -92,7 +92,23 @@ export class TicketStore {
       } catch (error) {
         console.error(`[tickets] Headless execution failed for ticket ${ticket.ticketId}:`, error.message);
 
-        // Mark ticket as error
+        // If agent is busy (lock conflict), retry after delay instead of failing
+        if (error.message.includes('already executing')) {
+          console.log(`[tickets] Agent ${ticket.targetAgent} busy - will retry ticket ${ticket.ticketId} in 2s`);
+
+          // Keep ticket as pending and retry after delay
+          setTimeout(() => {
+            const freshTicket = this.repo.get(ticket.ticketId);
+            if (freshTicket && freshTicket.status === 'pending') {
+              console.log(`[tickets] Retrying delivery for ticket ${ticket.ticketId}`);
+              this.deliverTicket(freshTicket);
+            }
+          }, 2000); // 2 second retry delay
+
+          return; // Exit without marking as error
+        }
+
+        // For other errors (timeout, CLI failure, etc.), mark as error
         this.repo.updateStatus(ticket.ticketId, 'error', {
           error: error.message,
           stack: error.stack

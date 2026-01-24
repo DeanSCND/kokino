@@ -325,12 +325,13 @@ export class MetricsCollector {
       SELECT
         agent_id,
         cli_type,
+        event,
         success,
         COUNT(*) as count
       FROM metrics
-      WHERE event IN ('EXECUTION_COMPLETED', 'EXECUTION_FAILED')
+      WHERE event IN ('EXECUTION_COMPLETED', 'EXECUTION_FAILED', 'EXECUTION_TIMEOUT')
         AND timestamp >= datetime('now', '-' || ? || ' hours')
-      GROUP BY agent_id, cli_type, success
+      GROUP BY agent_id, cli_type, event, success
     `).all(windowHours);
 
     const latencies = this.db.prepare(`
