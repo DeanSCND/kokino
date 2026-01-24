@@ -256,8 +256,8 @@ export const Canvas = ({ setHeaderControls }) => {
             console.log(`[canvas] Attempting to register agent ${name} with broker...`);
 
             const result = await broker.registerAgent(name, {
-                type: 'ui-agent',
-                metadata: { role, nodeId: id },
+                type: 'claude-code', // Use real CLI type for headless execution
+                metadata: { role, nodeId: id, commMode: 'headless' },
                 heartbeatIntervalMs: 30000
             });
 
