@@ -25,7 +25,7 @@ db.exec(`
     agent_id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'online',
-    comm_mode TEXT NOT NULL DEFAULT 'tmux' CHECK(comm_mode IN ('tmux', 'headless')),
+    comm_mode TEXT NOT NULL DEFAULT 'tmux' CHECK(comm_mode IN ('tmux', 'headless', 'shadow')),
     metadata JSON,
     heartbeat_interval_ms INTEGER DEFAULT 30000,
     last_heartbeat TEXT NOT NULL,
@@ -96,6 +96,27 @@ db.exec(`
   )
 `);
 
+// Schema: Shadow results table (parallel tmux vs headless testing)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shadow_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    tmux_success INTEGER NOT NULL,
+    headless_success INTEGER NOT NULL,
+    output_match INTEGER NOT NULL,
+    latency_delta_ms INTEGER,
+    tmux_duration_ms INTEGER,
+    headless_duration_ms INTEGER,
+    tmux_error TEXT,
+    headless_error TEXT,
+    tmux_response TEXT,
+    headless_response TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+  )
+`);
+
 // Create indexes for common queries
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tickets_target_agent ON tickets(target_agent);
@@ -111,6 +132,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
   CREATE INDEX IF NOT EXISTS idx_turns_conversation ON turns(conversation_id);
   CREATE INDEX IF NOT EXISTS idx_turns_created ON turns(created_at);
+  CREATE INDEX IF NOT EXISTS idx_shadow_results_agent ON shadow_results(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_shadow_results_created ON shadow_results(created_at);
+  CREATE INDEX IF NOT EXISTS idx_shadow_results_ticket ON shadow_results(ticket_id);
 `);
 
 console.log('[db] ✓ Database schema initialized');
