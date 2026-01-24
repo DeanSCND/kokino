@@ -275,14 +275,77 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
           }
         }
 
-        const result = await agentRunner.execute(agentId, prompt, {
-          timeoutMs,
-          metadata
-        });
+        // Issue #110: Update status to busy during execution
+        registry.updateStatus(agentId, 'busy');
 
-        jsonResponse(res, 200, result);
+        try {
+          const result = await agentRunner.execute(agentId, prompt, {
+            timeoutMs,
+            metadata
+          });
+
+          // Set back to ready on success
+          registry.updateStatus(agentId, 'ready');
+          jsonResponse(res, 200, result);
+        } catch (execError) {
+          // Set back to ready on error (or error status if fatal)
+          registry.updateStatus(agentId, 'ready');
+          throw execError;
+        }
       } catch (error) {
         console.error(`[agents/${agentId}/execute] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // POST /agents/:agentId/start - Bootstrap agent (Issue #110)
+    async start(req, res, agentId) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        const agent = registry.get(agentId);
+        if (!agent) {
+          return jsonResponse(res, 404, { error: 'Agent not found' });
+        }
+
+        // Check if already started
+        if (agent.status === 'ready' || agent.status === 'busy') {
+          return jsonResponse(res, 200, {
+            status: agent.status,
+            message: 'Agent already started',
+            sessionId: null
+          });
+        }
+
+        // Update status to 'starting'
+        registry.updateStatus(agentId, 'starting');
+
+        // Execute lightweight warmup prompt
+        const warmupPrompt = 'You are now online. Respond with a brief greeting confirming you are ready.';
+
+        try {
+          const result = await agentRunner.execute(agentId, warmupPrompt, {
+            timeoutMs: 120000, // 2 min timeout for bootstrap
+            metadata: { type: 'bootstrap' }
+          });
+
+          // Update status to 'ready'
+          registry.updateStatus(agentId, 'ready');
+
+          jsonResponse(res, 200, {
+            status: 'ready',
+            sessionId: result.metadata?.sessionId,
+            bootstrapTime: result.durationMs,
+            response: result.content
+          });
+        } catch (error) {
+          registry.updateStatus(agentId, 'error', error.message);
+          throw error;
+        }
+      } catch (error) {
+        console.error(`[agents/${agentId}/start] Error:`, error);
         jsonResponse(res, 500, { error: error.message });
       }
     },

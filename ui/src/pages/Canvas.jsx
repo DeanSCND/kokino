@@ -531,13 +531,13 @@ export const Canvas = ({ setHeaderControls }) => {
         }));
 
         try {
-            await broker.startAgent(agentName);
-            console.log(`[lifecycle] Started agent: ${agentName}`);
+            const result = await broker.startAgent(agentName);
+            console.log(`[lifecycle] Started agent: ${agentName}`, result);
 
-            // Update to final state
+            // Issue #110: Update to ready state after successful bootstrap
             setNodes((nds) => nds.map((n) => {
                 if (n.data.name === agentName) {
-                    return { ...n, data: { ...n.data, status: 'online', task: 'Waiting for orchestration...' } };
+                    return { ...n, data: { ...n.data, status: 'ready', task: 'Waiting for orchestration...' } };
                 }
                 return n;
             }));
@@ -545,10 +545,10 @@ export const Canvas = ({ setHeaderControls }) => {
             console.error(`[lifecycle] Failed to start ${agentName}:`, error);
             setOperationError(`Failed to start agent: ${error.message}`);
 
-            // Rollback
+            // Issue #110: Set error state on failure
             setNodes((nds) => nds.map((n) => {
                 if (n.data.name === agentName) {
-                    return { ...n, data: { ...n.data, status: 'offline', task: 'Failed to start' } };
+                    return { ...n, data: { ...n.data, status: 'error', task: `Failed to start: ${error.message}` } };
                 }
                 return n;
             }));

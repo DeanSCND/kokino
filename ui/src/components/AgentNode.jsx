@@ -4,11 +4,16 @@ import { User, Activity, PauseCircle, WifiOff, AlertTriangle, Clock, XCircle, He
 
 // Status styling map - from POC ui-observatory/src/components/AgentNode.jsx:6-11
 // Proven visual states with dual-cue system (color + icon)
+// Issue #110: Agent lifecycle states (idle → starting → ready → busy → ready)
 const statusStyles = {
-    active: { color: 'text-accent-green', border: 'border-accent-green', icon: Activity, label: 'Active' },
     idle: { color: 'text-text-secondary', border: 'border-text-muted', icon: PauseCircle, label: 'Idle' },
+    starting: { color: 'text-accent-purple', border: 'border-accent-purple', icon: Clock, label: 'Starting' },
+    ready: { color: 'text-accent-green', border: 'border-accent-green', icon: Activity, label: 'Ready' },
     busy: { color: 'text-accent-orange', border: 'border-accent-orange', icon: Activity, label: 'Busy' },
-    offline: { color: 'text-text-muted', border: 'border-border', icon: WifiOff, label: 'Offline' }
+    error: { color: 'text-accent-red', border: 'border-accent-red', icon: XCircle, label: 'Error' },
+    offline: { color: 'text-text-muted', border: 'border-border', icon: WifiOff, label: 'Offline' },
+    // Legacy alias for backward compatibility
+    active: { color: 'text-accent-green', border: 'border-accent-green', icon: Activity, label: 'Active' }
 };
 
 // Phase 8: Escalation indicator styles
@@ -68,7 +73,7 @@ export const AgentNode = ({ data, id }) => {
     };
 
     return (
-        <div className={`w-[280px] bg-surface rounded-xl border ${status === 'active' || status === 'busy' ? style.border : 'border-border'} hover:border-text-secondary transition-all shadow-lg relative`}>
+        <div className={`w-[280px] bg-surface rounded-xl border ${status === 'ready' || status === 'busy' || status === 'active' ? style.border : 'border-border'} hover:border-text-secondary transition-all shadow-lg relative`}>
             {/* Phase 8: Escalation Badge */}
             {escalationState && (
                 <div
