@@ -161,11 +161,23 @@ const server = http.createServer(async (req, res) => {
       return await agentRoutes.execute(req, res, agentId);
     }
 
+    // Headless Execution: Cancel execution
+    const cancelMatch = pathname.match(/^\/agents\/([^\/]+)\/execute\/cancel$/);
+    if (cancelMatch && method === 'POST') {
+      const agentId = cancelMatch[1];
+      return await agentRoutes.cancelExecution(req, res, agentId);
+    }
+
     // Headless Execution: End session
     const endSessionMatch = pathname.match(/^\/agents\/([^\/]+)\/end-session$/);
     if (endSessionMatch && method === 'POST') {
       const agentId = endSessionMatch[1];
       return await agentRoutes.endSession(req, res, agentId);
+    }
+
+    // Session Manager: Get all session statuses
+    if (pathname === '/agents/sessions/status' && method === 'GET') {
+      return await agentRoutes.getSessionStatus(req, res);
     }
 
     // Headless Execution: Get agent conversations

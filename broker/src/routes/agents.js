@@ -271,6 +271,21 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
       }
     },
 
+    // POST /agents/:agentId/execute/cancel - Cancel running execution
+    async cancelExecution(req, res, agentId) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        await agentRunner.cancelExecution(agentId);
+        jsonResponse(res, 200, { status: 'cancelled', agentId });
+      } catch (error) {
+        console.error(`[agents/${agentId}/execute/cancel] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
     // POST /agents/:agentId/end-session - End headless session
     async endSession(req, res, agentId) {
       try {
@@ -278,10 +293,25 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
           return jsonResponse(res, 503, { error: 'AgentRunner not available' });
         }
 
-        agentRunner.endSession(agentId);
+        await agentRunner.endSession(agentId);
         jsonResponse(res, 200, { status: 'session ended', agentId });
       } catch (error) {
         console.error(`[agents/${agentId}/end-session] Error:`, error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    // GET /agents/sessions/status - Get all session statuses
+    async getSessionStatus(req, res) {
+      try {
+        if (!agentRunner) {
+          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
+        }
+
+        const status = agentRunner.sessionManager.getStatus();
+        jsonResponse(res, 200, status);
+      } catch (error) {
+        console.error('[agents/sessions/status] Error:', error);
         jsonResponse(res, 500, { error: error.message });
       }
     },

@@ -139,8 +139,16 @@ class BrokerClient {
     });
   }
 
+  async cancelExecution(agentId) {
+    return this.request(`/agents/${agentId}/execute/cancel`, { method: 'POST' });
+  }
+
   async endSession(agentId) {
     return this.request(`/agents/${agentId}/end-session`, { method: 'POST' });
+  }
+
+  async getSessionStatus() {
+    return this.request('/agents/sessions/status');
   }
 
   async getConversations(agentId) {
