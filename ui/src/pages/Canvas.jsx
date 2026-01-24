@@ -266,7 +266,7 @@ export const Canvas = ({ setHeaderControls }) => {
             // Update node status after successful registration
             setNodes(nds => nds.map(n =>
                 n.id === id
-                    ? { ...n, data: { ...n.data, status: 'idle', task: 'Waiting for orchestration...' } }
+                    ? { ...n, data: { ...n.data, status: 'idle', task: 'Waiting for orchestration...', metadata: result.metadata } }
                     : n
             ));
 
@@ -464,7 +464,8 @@ export const Canvas = ({ setHeaderControls }) => {
         const commMode = agent.metadata?.commMode || agent.commMode || 'tmux';
 
         if (commMode === 'headless') {
-            setChatAgent(agent);
+            // AgentChatPanel expects agentId field, but node.data has name
+            setChatAgent({ ...agent, agentId: agent.name });
         } else {
             setTerminalAgent(agent.name);
         }
@@ -1329,7 +1330,7 @@ export const Canvas = ({ setHeaderControls }) => {
                                 {(contextMenu.data.metadata?.commMode === 'headless' || contextMenu.data.commMode === 'headless') ? (
                                     <button
                                         onClick={() => {
-                                            setChatAgent(contextMenu.data);
+                                            setChatAgent({ ...contextMenu.data, agentId: contextMenu.data.name });
                                             closeContextMenu();
                                         }}
                                         className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors flex items-center gap-2"
