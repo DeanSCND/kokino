@@ -4,11 +4,12 @@ import { TicketRepository } from '../db/TicketRepository.js';
 // Ticket correlation system with SQLite persistence for Store & Forward pattern
 
 export class TicketStore {
-  constructor(registry = null, agentRunner = null, shadowModeController = null) {
+  constructor(registry = null, agentRunner = null, shadowModeController = null, fallbackController = null) {
     this.repo = new TicketRepository();
     this.registry = registry; // Optional: for checking agent existence
     this.agentRunner = agentRunner; // For headless agent execution
     this.shadowModeController = shadowModeController; // For shadow mode testing
+    this.fallbackController = fallbackController; // For runtime fallback control
     // Waiters are runtime-only (not persisted - they're for long-poll HTTP connections)
     this.waiters = new Map(); // ticketId -> Set of callback functions
 
@@ -53,6 +54,8 @@ export class TicketStore {
    * HEADLESS: Direct execution via AgentRunner
    * TMUX: Store & Forward (ticket stays pending for watcher to poll)
    * SHADOW: Parallel execution of both tmux and headless for testing
+   *
+   * FALLBACK: Runtime override via FallbackController (forces tmux if degraded)
    */
   async deliverTicket(ticket) {
     const agent = this.registry ? this.registry.get(ticket.targetAgent) : null;
@@ -62,7 +65,16 @@ export class TicketStore {
       return; // Ticket stays pending for when agent comes online
     }
 
-    const commMode = agent.commMode || agent.metadata?.commMode || 'tmux';
+    // Check fallback controller first (runtime degradation override)
+    let commMode = agent.commMode || agent.metadata?.commMode || 'tmux';
+
+    if (this.fallbackController) {
+      const fallbackCheck = this.fallbackController.shouldUseTmux(agent);
+      if (fallbackCheck.useTmux && commMode !== 'tmux') {
+        console.warn(`[tickets] Fallback override for ${ticket.targetAgent}: ${fallbackCheck.reason} - using tmux instead of ${commMode}`);
+        commMode = 'tmux'; // Force tmux due to fallback
+      }
+    }
 
     // SHADOW MODE: Run both tmux and headless in parallel for testing
     if (commMode === 'shadow' && this.shadowModeController) {

@@ -10,6 +10,7 @@ import { ConversationStore } from './db/ConversationStore.js';
 import { ConversationIntegrityChecker } from './db/ConversationIntegrityChecker.js';
 import { AgentRunner } from './agents/AgentRunner.js';
 import { ShadowModeController } from './agents/ShadowModeController.js';
+import { FallbackController } from './agents/FallbackController.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createMessageRoutes } from './routes/messages.js';
 import { createGitHubRoutes } from './routes/github.js';
@@ -30,10 +31,13 @@ const messageRepository = new MessageRepository();
 const conversationStore = new ConversationStore();
 const agentRunner = new AgentRunner(registry, conversationStore);
 
+// Initialize fallback controller
+const fallbackController = new FallbackController();
+
 // Initialize shadow mode controller (must be before TicketStore)
 const shadowModeController = new ShadowModeController(null, agentRunner); // ticketStore passed after creation
 
-const ticketStore = new TicketStore(registry, agentRunner, shadowModeController); // Pass shadowModeController for shadow mode
+const ticketStore = new TicketStore(registry, agentRunner, shadowModeController, fallbackController); // Pass controllers
 
 // Wire ticketStore back into shadowModeController (circular dependency)
 shadowModeController.ticketStore = ticketStore;
@@ -49,6 +53,7 @@ const environmentDoctor = new EnvironmentDoctor();
 const integrityChecker = new ConversationIntegrityChecker();
 
 console.log('[broker] ✓ AgentRunner initialized for headless execution');
+console.log('[broker] ✓ FallbackController initialized for runtime degradation');
 console.log('[broker] ✓ ShadowModeController initialized for parallel testing');
 console.log('[broker] ✓ Telemetry & monitoring initialized');
 console.log('[broker] ✓ Environment Doctor initialized');
@@ -204,6 +209,58 @@ const server = http.createServer(async (req, res) => {
       const limit = Number(url.searchParams.get('limit')) || 100;
       const mismatches = shadowModeController.getShadowMismatches(limit);
       return jsonResponse(res, 200, mismatches);
+    }
+
+    // Fallback status
+    if (pathname === '/api/fallback/status' && method === 'GET') {
+      const status = fallbackController.getStatus();
+      return jsonResponse(res, 200, status);
+    }
+
+    // Disable CLI type
+    if (pathname === '/api/fallback/cli/disable' && method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      await new Promise(resolve => req.on('end', resolve));
+      const { cliType, reason } = JSON.parse(body);
+      fallbackController.disableCLI(cliType, reason);
+      return jsonResponse(res, 200, { message: `Disabled headless for ${cliType}` });
+    }
+
+    // Enable CLI type
+    if (pathname === '/api/fallback/cli/enable' && method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      await new Promise(resolve => req.on('end', resolve));
+      const { cliType } = JSON.parse(body);
+      fallbackController.enableCLI(cliType);
+      return jsonResponse(res, 200, { message: `Re-enabled headless for ${cliType}` });
+    }
+
+    // Force agent fallback
+    if (pathname === '/api/fallback/agent/force' && method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      await new Promise(resolve => req.on('end', resolve));
+      const { agentId, reason } = JSON.parse(body);
+      fallbackController.forceAgentFallback(agentId, reason);
+      return jsonResponse(res, 200, { message: `Forced ${agentId} to tmux` });
+    }
+
+    // Clear agent fallback
+    if (pathname === '/api/fallback/agent/clear' && method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      await new Promise(resolve => req.on('end', resolve));
+      const { agentId } = JSON.parse(body);
+      fallbackController.clearAgentFallback(agentId);
+      return jsonResponse(res, 200, { message: `Cleared fallback for ${agentId}` });
+    }
+
+    // Clear all fallbacks
+    if (pathname === '/api/fallback/clear-all' && method === 'POST') {
+      fallbackController.clearAll();
+      return jsonResponse(res, 200, { message: 'Cleared all fallbacks' });
     }
 
     // Agent registration
