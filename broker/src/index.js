@@ -77,7 +77,7 @@ console.log('[broker] ✓ Conversation Integrity Checker initialized');
 })();
 
 // Create route handlers
-const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository, agentRunner, conversationStore);
+const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository, agentRunner, conversationStore, fallbackController);
 const messageRoutes = createMessageRoutes(ticketStore, messageRepository);
 const githubRoutes = createGitHubRoutes();
 
