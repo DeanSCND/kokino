@@ -16,6 +16,9 @@ import { randomUUID } from 'node:crypto';
 import { ConversationStore } from '../db/ConversationStore.js';
 import { getMetricsCollector } from '../telemetry/MetricsCollector.js';
 import { AgentSessionManager } from './AgentSessionManager.js';
+import { ProcessSupervisor } from './ProcessSupervisor.js';
+import { CircuitBreaker } from './CircuitBreaker.js';
+import { LogRotator } from './LogRotator.js';
 
 /**
  * Build the full environment that Claude Code expects.
@@ -152,6 +155,9 @@ export class AgentRunner {
     this.conversationStore = conversationStore || new ConversationStore();
     this.metrics = getMetricsCollector();
     this.sessionManager = new AgentSessionManager();
+    this.processSupervisor = new ProcessSupervisor();
+    this.circuitBreaker = new CircuitBreaker();
+    this.logRotator = new LogRotator();
 
     // Active subprocess calls: agentId -> ChildProcess
     this.activeCalls = new Map();
@@ -161,7 +167,17 @@ export class AgentRunner {
       this.sessionManager.cleanupStaleSessions();
     }, 3600000); // 1 hour
 
-    console.log('[AgentRunner] Initialized with pre-built Claude environment and SessionManager');
+    // Cleanup zombie processes every 5 minutes
+    setInterval(() => {
+      this.processSupervisor.cleanupZombies();
+    }, 300000); // 5 minutes
+
+    // Cleanup old log archives daily
+    setInterval(() => {
+      this.logRotator.cleanup();
+    }, 86400000); // 24 hours
+
+    console.log('[AgentRunner] Initialized with ProcessSupervisor, CircuitBreaker, and LogRotator');
   }
 
   /**
@@ -333,98 +349,115 @@ export class AgentRunner {
   async runClaudeOnce({ agentId, prompt, cwd, timeoutMs = 300000 }) {
     const startTime = Date.now();
 
-    // Build CLI arguments
-    const args = [
-      '--dangerously-skip-permissions',  // REQUIRED for headless
-      '-p', prompt,
-      '--model', process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-    ];
+    // Wrap in circuit breaker for rate limiting
+    return this.circuitBreaker.execute(agentId, async () => {
+      // Build CLI arguments
+      const args = [
+        '--dangerously-skip-permissions',  // REQUIRED for headless
+        '-p', prompt,
+        '--model', process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+      ];
 
-    // Session management: --session-id for NEW, --resume for EXISTING
-    const sessionInfo = this.sessionManager.getSessionInfo(agentId);
-    if (sessionInfo?.hasSession && sessionInfo?.sessionId) {
-      // Continue existing session (resume uses the UUID session ID)
-      args.push('--resume', sessionInfo.sessionId);
-      console.log(`[AgentRunner] Resuming session: ${sessionInfo.sessionId}`);
-    } else {
-      // Create new session with UUID
-      const sessionId = sessionInfo?.sessionId || randomUUID();
-      args.push('--session-id', sessionId);
-      console.log(`[AgentRunner] Starting new session: ${sessionId} for agent ${agentId}`);
-    }
+      // Session management: --session-id for NEW, --resume for EXISTING
+      const sessionInfo = this.sessionManager.getSessionInfo(agentId);
+      if (sessionInfo?.hasSession && sessionInfo?.sessionId) {
+        // Continue existing session (resume uses the UUID session ID)
+        args.push('--resume', sessionInfo.sessionId);
+        console.log(`[AgentRunner] Resuming session: ${sessionInfo.sessionId}`);
+      } else {
+        // Create new session with UUID
+        const sessionId = sessionInfo?.sessionId || randomUUID();
+        args.push('--session-id', sessionId);
+        console.log(`[AgentRunner] Starting new session: ${sessionId} for agent ${agentId}`);
+      }
 
-    // Add MCP config if configured
-    const agent = await this.registry.get(agentId);
-    if (agent?.metadata?.mcpConfigPath) {
-      args.push('--mcp-config', agent.metadata.mcpConfigPath);
-    }
+      // Add MCP config if configured
+      const agent = await this.registry.get(agentId);
+      if (agent?.metadata?.mcpConfigPath) {
+        args.push('--mcp-config', agent.metadata.mcpConfigPath);
+      }
 
-    return new Promise((resolve, reject) => {
-      const claude = spawn('claude', args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: false,
-        env: claudeEnv,  // Pre-built environment
-        cwd: cwd || process.cwd(),
-      });
-
-      // Track active call for cancellation in SessionManager
-      this.sessionManager.registerProcess(agentId, claude);
-      this.activeCalls.set(agentId, claude);
-
-      let stdout = '';
-      let stderr = '';
-
-      // Close stdin immediately (headless mode)
-      claude.stdin.end();
-
-      // Collect stdout
-      claude.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      // Collect stderr
-      claude.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      // Handle process errors
-      claude.on('error', (error) => {
-        this.activeCalls.delete(agentId);
-        reject(new Error(`Failed to spawn Claude CLI: ${error.message}`));
-      });
-
-      // Handle process exit
-      claude.on('close', (code) => {
-        this.activeCalls.delete(agentId);
-        const durationMs = Date.now() - startTime;
-
-        if (code !== 0) {
-          reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`));
-          return;
-        }
-
-        const { response, sessionId } = parseClaudeStdout(stdout);
-
-        resolve({
-          code,
-          response,
-          sessionId,
-          durationMs,
-          stdout,
-          stderr,
+      return new Promise((resolve, reject) => {
+        // Use ProcessSupervisor for resource monitoring
+        const claude = this.processSupervisor.spawn('claude', args, {
+          agentId,
+          maxMemoryMB: 2048,
+          maxCPUPercent: 200,
+          timeoutMs,
+          env: claudeEnv,
+          cwd: cwd || process.cwd(),
         });
-      });
 
-      // Timeout handling
-      const timeout = setTimeout(() => {
-        if (this.activeCalls.has(agentId)) {
-          claude.kill('SIGTERM');
+        // Track active call for cancellation in SessionManager
+        this.sessionManager.registerProcess(agentId, claude);
+        this.activeCalls.set(agentId, claude);
+
+        // Log process start
+        this.logRotator.writeEvent(agentId, 'PROCESS_STARTED', { pid: claude.pid, timeoutMs });
+
+        let stdout = '';
+        let stderr = '';
+
+        // Close stdin immediately (headless mode)
+        claude.stdin.end();
+
+        // Collect stdout and log
+        claude.stdout.on('data', (data) => {
+          const text = data.toString();
+          stdout += text;
+          this.logRotator.write(agentId, text, 'stdout');
+        });
+
+        // Collect stderr and log
+        claude.stderr.on('data', (data) => {
+          const text = data.toString();
+          stderr += text;
+          this.logRotator.write(agentId, text, 'stderr');
+        });
+
+        // Handle process errors
+        claude.on('error', (error) => {
           this.activeCalls.delete(agentId);
-          reject(new Error(`Execution timeout after ${timeoutMs}ms`));
-        }
-      }, timeoutMs);
+          this.logRotator.writeEvent(agentId, 'PROCESS_ERROR', { error: error.message });
+          reject(new Error(`Failed to spawn Claude CLI: ${error.message}`));
+        });
 
-      claude.on('close', () => clearTimeout(timeout));
+        // Handle process exit
+        claude.on('close', (code) => {
+          this.activeCalls.delete(agentId);
+          const durationMs = Date.now() - startTime;
+
+          this.logRotator.writeEvent(agentId, 'PROCESS_EXITED', { code, durationMs });
+
+          if (code !== 0) {
+            reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`));
+            return;
+          }
+
+          const { response, sessionId } = parseClaudeStdout(stdout);
+
+          resolve({
+            code,
+            response,
+            sessionId,
+            durationMs,
+            stdout,
+            stderr,
+          });
+        });
+
+        // Timeout handling
+        const timeout = setTimeout(() => {
+          if (this.activeCalls.has(agentId)) {
+            claude.kill('SIGTERM');
+            this.activeCalls.delete(agentId);
+            this.logRotator.writeEvent(agentId, 'PROCESS_TIMEOUT', { timeoutMs });
+            reject(new Error(`Execution timeout after ${timeoutMs}ms`));
+          }
+        }, timeoutMs);
+
+        claude.on('close', () => clearTimeout(timeout));
+      });
     });
   }
 
