@@ -206,6 +206,10 @@ export class AgentRunner {
       throw new Error(`Agent ${agentId} is not in headless mode (current: ${commMode})`);
     }
 
+    // CRITICAL: Check circuit breaker BEFORE acquiring lock (for load shedding)
+    // Use a lightweight check that doesn't wrap execution (avoids double-wrapping)
+    await this.checkCircuitBreaker(agentId);
+
     // Acquire execution lock via SessionManager (waits if agent busy)
     const session = await this.sessionManager.acquireLock(agentId, timeoutMs);
 
@@ -342,14 +346,48 @@ export class AgentRunner {
   }
 
   /**
+   * Check circuit breaker state (lightweight check before lock acquisition)
+   *
+   * @param {string} agentId - Agent identifier
+   * @throws {Error} If circuit is OPEN or HALF_OPEN with max attempts
+   */
+  async checkCircuitBreaker(agentId) {
+    const circuit = this.circuitBreaker.getCircuit(agentId);
+
+    // Reject if circuit is OPEN
+    if (circuit.state === 'OPEN') {
+      const timeSinceFailure = Date.now() - circuit.lastFailureTime;
+      const resetTimeMs = this.circuitBreaker.resetTimeMs;
+
+      this.metrics.record('CIRCUIT_REJECTED', agentId, {
+        metadata: {
+          state: circuit.state,
+          failures: circuit.failures,
+          timeSinceFailure
+        }
+      });
+
+      throw new Error(`Circuit breaker is OPEN for ${agentId} - too many failures (${circuit.failures}/${this.circuitBreaker.failureThreshold}). Retry in ${Math.round((resetTimeMs - timeSinceFailure) / 1000)}s.`);
+    }
+
+    // Reject if HALF_OPEN and already testing
+    if (circuit.state === 'HALF_OPEN' && circuit.halfOpenAttempts >= this.circuitBreaker.halfOpenMaxAttempts) {
+      throw new Error(`Circuit breaker is HALF_OPEN for ${agentId} - already testing recovery`);
+    }
+  }
+
+  /**
    * Execute a single prompt against Claude Code CLI
    *
    * Reference: Network Chuck's runClaudeOnce()
+   *
+   * NOTE: Circuit breaker check happens in execute() BEFORE lock acquisition.
+   * This method wraps execution in circuit breaker for success/failure tracking.
    */
   async runClaudeOnce({ agentId, prompt, cwd, timeoutMs = 300000 }) {
     const startTime = Date.now();
 
-    // Wrap in circuit breaker for rate limiting
+    // Track success/failure with circuit breaker (check already done in execute())
     return this.circuitBreaker.execute(agentId, async () => {
       // Build CLI arguments
       const args = [

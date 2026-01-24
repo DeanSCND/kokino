@@ -12,7 +12,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 export class LogRotator {
   constructor(options = {}) {
@@ -108,14 +108,24 @@ export class LogRotator {
       // Rename current log
       fs.renameSync(logPath, archivePath);
 
-      // Compress in background (don't block)
+      // Compress in background (don't block) - use spawn with array args (no shell injection)
       setImmediate(() => {
-        try {
-          execSync(`gzip ${archivePath}`, { timeout: 30000 });
-          console.log(`[LogRotator] Compressed ${path.basename(archivePath)}.gz`);
-        } catch (error) {
+        const gzip = spawn('gzip', [archivePath], {
+          stdio: 'ignore',
+          shell: false
+        });
+
+        gzip.on('close', (code) => {
+          if (code === 0) {
+            console.log(`[LogRotator] Compressed ${path.basename(archivePath)}.gz`);
+          } else {
+            console.error(`[LogRotator] Failed to compress ${archivePath}: gzip exited with code ${code}`);
+          }
+        });
+
+        gzip.on('error', (error) => {
           console.error(`[LogRotator] Failed to compress ${archivePath}:`, error.message);
-        }
+        });
       });
 
     } catch (error) {
@@ -163,13 +173,35 @@ export class LogRotator {
   }
 
   /**
+   * Sanitize agent ID to prevent path traversal
+   *
+   * @param {string} agentId - Agent identifier
+   * @returns {string} Sanitized agent ID
+   */
+  sanitizeAgentId(agentId) {
+    // Allow only alphanumeric, hyphens, underscores
+    const sanitized = agentId.replace(/[^a-zA-Z0-9_-]/g, '');
+
+    if (sanitized !== agentId) {
+      throw new Error(`Invalid agentId: contains unsafe characters`);
+    }
+
+    if (sanitized.length === 0) {
+      throw new Error(`Invalid agentId: empty after sanitization`);
+    }
+
+    return sanitized;
+  }
+
+  /**
    * Get log file path for agent
    *
    * @param {string} agentId - Agent identifier
    * @returns {string} Log file path
    */
   getLogPath(agentId) {
-    return path.join(this.basePath, `${agentId}.log`);
+    const sanitized = this.sanitizeAgentId(agentId);
+    return path.join(this.basePath, `${sanitized}.log`);
   }
 
   /**
@@ -187,13 +219,15 @@ export class LogRotator {
     }
 
     try {
-      // Use tail to get last N lines efficiently
-      const output = execSync(`tail -n ${lines} ${logPath}`, {
-        encoding: 'utf8',
-        timeout: 5000
-      });
+      // Read entire file and split into lines (safe, no shell injection)
+      const content = fs.readFileSync(logPath, 'utf8');
+      const allLines = content.split('\n');
 
-      return output;
+      // Get last N lines
+      const startIndex = Math.max(0, allLines.length - lines);
+      const recentLines = allLines.slice(startIndex);
+
+      return recentLines.join('\n');
     } catch (error) {
       console.error(`[LogRotator] Failed to read log for ${agentId}:`, error.message);
       return '';
