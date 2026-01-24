@@ -7,6 +7,7 @@ import { AgentRegistry } from './models/AgentRegistry.js';
 import { TicketStore } from './models/TicketStore.js';
 import { MessageRepository } from './db/MessageRepository.js';
 import { ConversationStore } from './db/ConversationStore.js';
+import { ConversationIntegrityChecker } from './db/ConversationIntegrityChecker.js';
 import { AgentRunner } from './agents/AgentRunner.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createMessageRoutes } from './routes/messages.js';
@@ -36,9 +37,13 @@ const prometheusExporter = new PrometheusExporter(metricsCollector);
 // Initialize environment doctor
 const environmentDoctor = new EnvironmentDoctor();
 
+// Initialize integrity checker
+const integrityChecker = new ConversationIntegrityChecker();
+
 console.log('[broker] ✓ AgentRunner initialized for headless execution');
 console.log('[broker] ✓ Telemetry & monitoring initialized');
 console.log('[broker] ✓ Environment Doctor initialized');
+console.log('[broker] ✓ Conversation Integrity Checker initialized');
 
 // Run startup health check for claude-code (most common CLI)
 (async () => {
@@ -71,6 +76,33 @@ setInterval(() => {
 setInterval(() => {
   metricsCollector.cleanup(90); // Remove metrics older than 90 days
 }, 86400000); // 24 hours
+
+// Run nightly integrity check at 2am
+const scheduleNightlyIntegrityCheck = () => {
+  const now = new Date();
+  const next2am = new Date(now);
+  next2am.setHours(2, 0, 0, 0);
+
+  // If 2am already passed today, schedule for tomorrow
+  if (next2am <= now) {
+    next2am.setDate(next2am.getDate() + 1);
+  }
+
+  const msUntil2am = next2am - now;
+
+  setTimeout(() => {
+    console.log('[broker] Running nightly integrity check...');
+    integrityChecker.runFullCheck();
+
+    // Schedule next run (24 hours)
+    setInterval(() => {
+      console.log('[broker] Running nightly integrity check...');
+      integrityChecker.runFullCheck();
+    }, 86400000); // 24 hours
+  }, msUntil2am);
+};
+
+scheduleNightlyIntegrityCheck();
 
 // HTTP Server
 const server = http.createServer(async (req, res) => {
@@ -119,6 +151,25 @@ const server = http.createServer(async (req, res) => {
         const result = await environmentDoctor.checkAll();
         return jsonResponse(res, result.overall ? 200 : 503, result);
       }
+    }
+
+    // Conversation integrity check
+    if (pathname === '/api/integrity/check' && method === 'GET') {
+      const report = integrityChecker.runFullCheck();
+      const hasIssues = report.orphanedTurns > 0 || report.conversationsWithIssues > 0;
+      return jsonResponse(res, hasIssues ? 503 : 200, report);
+    }
+
+    // Cleanup orphaned turns
+    if (pathname === '/api/integrity/cleanup' && method === 'POST') {
+      const count = integrityChecker.cleanupOrphans();
+      return jsonResponse(res, 200, { deleted: count, message: `Cleaned up ${count} orphaned turns` });
+    }
+
+    // Conversation store statistics
+    if (pathname === '/api/integrity/stats' && method === 'GET') {
+      const stats = integrityChecker.getStats();
+      return jsonResponse(res, 200, stats);
     }
 
     // Agent registration
