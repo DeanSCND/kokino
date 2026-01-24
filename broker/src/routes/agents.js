@@ -146,10 +146,23 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
     // DELETE /agents/:agentId
     async delete(req, res, agentId) {
       try {
+        const agent = registry.get(agentId);
+        if (!agent) {
+          return jsonResponse(res, 404, { error: 'Agent not found' });
+        }
+
+        // Clean up headless sessions and processes
+        if (agentRunner && (agent.commMode === 'headless' || agent.commMode === 'shadow')) {
+          await agentRunner.endSession(agentId);
+        }
+
+        // Delete from registry
         const existed = registry.delete(agentId);
         if (!existed) {
           return jsonResponse(res, 404, { error: 'Agent not found' });
         }
+
+        console.log(`[agents/${agentId}] Deleted agent and cleaned up resources`);
         jsonResponse(res, 204);
       } catch (error) {
         console.error(`[agents/${agentId}] Delete error:`, error);
