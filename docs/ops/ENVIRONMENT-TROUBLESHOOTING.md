@@ -300,8 +300,7 @@ du -sh broker/logs/agents/*
 # Remove old logs (keep last 7 days)
 find broker/logs/agents -name "*.log" -mtime +7 -delete
 
-# Rotate current logs
-npm run rotate-logs --workspace=broker
+# Note: Automatic log rotation is handled by LogRotator service in broker
 ```
 
 #### Option 2: Clean database
@@ -570,11 +569,10 @@ async spawn(req, res, agentId) {
 node scripts/cleanup-sessions.js --max-age 7d
 curl -X POST http://127.0.0.1:5050/api/metrics/cleanup?days=90
 
-# Rotate logs
-npm run rotate-logs --workspace=broker
-
 # Update CLIs
 npm update -g @anthropic-ai/claude-cli
+
+# Note: Log rotation is automatic via LogRotator service
 ```
 
 ---

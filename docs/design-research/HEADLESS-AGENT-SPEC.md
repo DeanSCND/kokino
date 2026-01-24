@@ -17,7 +17,7 @@
 - ✅ Message routing (dual-mode: tmux vs headless) (`broker/src/models/TicketStore.js`)
 - ✅ Environment Doctor & self-checks (`broker/src/agents/EnvironmentDoctor.js`)
 - ✅ Circuit breaker & resource limits (`broker/src/agents/CircuitBreaker.js`, `ProcessSupervisor.js`)
-- ✅ JSONL parser with schema validation (`broker/src/utils/jsonlParser.js`)
+- ✅ JSONL parser with schema validation (`broker/src/agents/JSONLParser.js`)
 - ✅ Shadow mode testing (`broker/src/agents/ShadowModeController.js`)
 - ✅ Runtime fallback toggle (`broker/src/agents/FallbackController.js`)
 - ✅ Telemetry & SLO tracking (`broker/src/telemetry/MetricsCollector.js`)
@@ -102,11 +102,16 @@ This document specifies a **second communication method** for Kokino that replac
 
 | CLI | Headless Flag | JSON Output | Session Resume | Status |
 |-----|---------------|-------------|----------------|--------|
-| **Claude Code** | `-p "prompt"` | `--output-format json` | `--resume <session>` | ✅ Production Ready |
-| **Factory Droid** | `droid exec "task"` | Built-in JSON | `--session-id <id>` | ✅ Production Ready |
-| **Gemini CLI** | `-p "prompt"` | `--output-format json` | Session state | ✅ Production Ready |
+| **Claude Code** | `-p "prompt"` | `--output-format jsonl` | `--session-id <id>` / `--resume` | ✅ Production Ready |
 
-### Tier 2: Limited Support (Future)
+### Tier 2: Planned Support
+
+| CLI | Headless Flag | JSON Output | Session Resume | Status |
+|-----|---------------|-------------|----------------|--------|
+| **Factory Droid** | `droid exec "task"` | Built-in JSON | `--session-id <id>` | 📋 Spec Complete, Not Implemented |
+| **Gemini CLI** | `-p "prompt"` | `--output-format json` | Session state | 📋 Spec Complete, Not Implemented |
+
+### Tier 3: Limited Support (Future)
 
 | CLI | Headless | Notes |
 |-----|----------|-------|

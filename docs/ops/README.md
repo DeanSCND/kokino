@@ -45,8 +45,6 @@ Located in `../../scripts/`:
 
 - **`diagnose-headless.sh`** - Comprehensive environment diagnostic (run first!)
 - **`cleanup-sessions.js`** - Remove stale sessions and conversations
-- **`rotate-logs.sh`** - Manual log rotation trigger
-- **`check-shadow-mode.js`** - Analyze shadow mode results
 
 **Quick diagnostic workflow:**
 ```bash
