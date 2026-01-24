@@ -15,6 +15,7 @@ import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { ConversationStore } from '../db/ConversationStore.js';
 import { getMetricsCollector } from '../telemetry/MetricsCollector.js';
+import { AgentSessionManager } from './AgentSessionManager.js';
 
 /**
  * Build the full environment that Claude Code expects.
@@ -150,51 +151,17 @@ export class AgentRunner {
     this.registry = registry;
     this.conversationStore = conversationStore || new ConversationStore();
     this.metrics = getMetricsCollector();
-
-    // Session tracking: agentId -> { sessionId, hasSession }
-    this.sessions = new Map();
+    this.sessionManager = new AgentSessionManager();
 
     // Active subprocess calls: agentId -> ChildProcess
     this.activeCalls = new Map();
 
-    // Execution locks: agentId -> boolean (prevents concurrent executions)
-    this.executionLocks = new Map();
+    // Cleanup stale sessions every hour
+    setInterval(() => {
+      this.sessionManager.cleanupStaleSessions();
+    }, 3600000); // 1 hour
 
-    console.log('[AgentRunner] Initialized with pre-built Claude environment');
-  }
-
-  /**
-   * Acquire execution lock for agent (simple lock, not queue-based)
-   * Throws if agent is already executing
-   */
-  acquireLock(agentId, timeoutMs = 30000) {
-    if (this.executionLocks.get(agentId)) {
-      throw new Error(`Agent ${agentId} is already executing. Please wait for current execution to complete.`);
-    }
-
-    this.executionLocks.set(agentId, true);
-    console.log(`[AgentRunner] Lock acquired for ${agentId}`);
-
-    // Auto-release lock after timeout as safety measure
-    const timeoutHandle = setTimeout(() => {
-      if (this.executionLocks.get(agentId)) {
-        console.warn(`[AgentRunner] Force-releasing stale lock for ${agentId} after ${timeoutMs}ms`);
-        this.releaseLock(agentId);
-      }
-    }, timeoutMs);
-
-    return timeoutHandle;
-  }
-
-  /**
-   * Release execution lock for agent
-   */
-  releaseLock(agentId, timeoutHandle = null) {
-    this.executionLocks.delete(agentId);
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-    console.log(`[AgentRunner] Lock released for ${agentId}`);
+    console.log('[AgentRunner] Initialized with pre-built Claude environment and SessionManager');
   }
 
   /**
@@ -223,8 +190,8 @@ export class AgentRunner {
       throw new Error(`Agent ${agentId} is not in headless mode (current: ${commMode})`);
     }
 
-    // Acquire execution lock (throws if already executing)
-    const lockTimeoutHandle = this.acquireLock(agentId, timeoutMs + 30000);
+    // Acquire execution lock via SessionManager (waits if agent busy)
+    const session = await this.sessionManager.acquireLock(agentId, timeoutMs);
 
     const startTime = Date.now();
     const cliType = agent.type || 'claude-code';
@@ -292,8 +259,13 @@ export class AgentRunner {
         metadata: { sessionId: result.sessionId, exitCode: result.code }
       });
 
+      // Mark session as initialized if we got a sessionId
+      if (result.sessionId) {
+        this.sessionManager.markSessionInitialized(agentId, result.sessionId);
+      }
+
       // Release lock on success
-      this.releaseLock(agentId, lockTimeoutHandle);
+      this.sessionManager.releaseLock(agentId);
 
       return {
         conversationId: convId,
@@ -333,10 +305,24 @@ export class AgentRunner {
       }
 
       // CRITICAL: Always release lock on error
-      this.releaseLock(agentId, lockTimeoutHandle);
+      this.sessionManager.releaseLock(agentId);
 
       throw error;
     }
+  }
+
+  /**
+   * Cancel execution for an agent
+   */
+  async cancelExecution(agentId) {
+    return this.sessionManager.cancelExecution(agentId);
+  }
+
+  /**
+   * End session for an agent
+   */
+  async endSession(agentId) {
+    return this.sessionManager.endSession(agentId);
   }
 
   /**
@@ -355,16 +341,15 @@ export class AgentRunner {
     ];
 
     // Session management: --session-id for NEW, --resume for EXISTING
-    const sessionInfo = this.sessions.get(agentId);
-    if (sessionInfo?.sessionId) {
+    const sessionInfo = this.sessionManager.getSessionInfo(agentId);
+    if (sessionInfo?.hasSession && sessionInfo?.sessionId) {
       // Continue existing session (resume uses the UUID session ID)
       args.push('--resume', sessionInfo.sessionId);
       console.log(`[AgentRunner] Resuming session: ${sessionInfo.sessionId}`);
     } else {
       // Create new session with UUID
-      const sessionId = randomUUID();
+      const sessionId = sessionInfo?.sessionId || randomUUID();
       args.push('--session-id', sessionId);
-      this.sessions.set(agentId, { sessionId });
       console.log(`[AgentRunner] Starting new session: ${sessionId} for agent ${agentId}`);
     }
 
@@ -382,7 +367,8 @@ export class AgentRunner {
         cwd: cwd || process.cwd(),
       });
 
-      // Track active call for cancellation
+      // Track active call for cancellation in SessionManager
+      this.sessionManager.registerProcess(agentId, claude);
       this.activeCalls.set(agentId, claude);
 
       let stdout = '';
