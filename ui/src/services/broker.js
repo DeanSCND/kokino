@@ -115,7 +115,10 @@ class BrokerClient {
   // Lifecycle
 
   async startAgent(agentId) {
-    return this.request(`/agents/${agentId}/start`, { method: 'POST' });
+    return this.request(`/agents/${agentId}/start`, {
+      method: 'POST',
+      timeout: 125000  // 2min + 5s buffer for bootstrap timeout
+    });
   }
 
   async stopAgent(agentId) {
