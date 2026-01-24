@@ -42,7 +42,7 @@ export class AgentSessionManager extends EventEmitter {
     if (!session) {
       // First execution for this agent - create session state
       session = {
-        sessionId: agentId,
+        sessionId: null, // Will be set to UUID on first execution
         hasSession: false,
         lock: false,
         activeExecution: null,
