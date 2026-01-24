@@ -250,11 +250,16 @@ export class AgentRunner {
       }
 
       // Add user turn to conversation
-      this.conversationStore.addTurn(convId, {
-        role: 'user',
-        content: prompt,
-        metadata: { source: 'broker', ...metadata }
-      });
+      try {
+        this.conversationStore.addTurn(convId, {
+          role: 'user',
+          content: prompt,
+          metadata: { source: 'broker', ...metadata }
+        });
+        console.log(`[AgentRunner] Logged user turn to conversation ${convId}`);
+      } catch (error) {
+        console.error(`[AgentRunner] Failed to log user turn:`, error);
+      }
 
       // Build layered prompt
       const fullPrompt = buildAgentPrompt({ agent, ticketPayload: prompt });
@@ -268,15 +273,20 @@ export class AgentRunner {
       });
 
       // Add assistant turn to conversation
-      this.conversationStore.addTurn(convId, {
-        role: 'assistant',
-        content: result.response,
-        metadata: {
-          durationMs: result.durationMs,
-          sessionId: result.sessionId,
-          exitCode: result.code
-        }
-      });
+      try {
+        this.conversationStore.addTurn(convId, {
+          role: 'assistant',
+          content: result.response,
+          metadata: {
+            durationMs: result.durationMs,
+            sessionId: result.sessionId,
+            exitCode: result.code
+          }
+        });
+        console.log(`[AgentRunner] Logged assistant turn to conversation ${convId}`);
+      } catch (error) {
+        console.error(`[AgentRunner] Failed to log assistant turn:`, error);
+      }
 
       const durationMs = Date.now() - startTime;
 
@@ -390,7 +400,7 @@ export class AgentRunner {
    * Issue #112: Agents need context to know they should use MCP tools for team collaboration.
    */
   buildSystemContext(agent) {
-    const templatePath = path.join(process.cwd(), 'broker', 'prompts', 'agent-system-context.md');
+    const templatePath = path.join(process.cwd(), 'prompts', 'agent-system-context.md');
 
     if (!fs.existsSync(templatePath)) {
       console.warn(`[AgentRunner] System context template not found: ${templatePath}`);
