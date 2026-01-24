@@ -135,7 +135,8 @@ class BrokerClient {
   async executeTask(agentId, { prompt, timeoutMs, metadata }) {
     return this.request(`/agents/${agentId}/execute`, {
       method: 'POST',
-      body: JSON.stringify({ prompt, timeoutMs, metadata })
+      body: JSON.stringify({ prompt, timeoutMs, metadata }),
+      timeout: timeoutMs + 5000  // Add 5s buffer to HTTP timeout
     });
   }
 
