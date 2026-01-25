@@ -232,8 +232,8 @@ export class APIRouter {
         await this.parseBody(req);
       }
 
-      // Call route handler
-      await match.handler(req, res);
+      // Call route handler with params
+      await match.handler(req, res, match.params);
 
     } catch (error) {
       console.error('[Router] Error handling request:', error);
