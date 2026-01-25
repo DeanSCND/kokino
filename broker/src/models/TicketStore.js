@@ -314,6 +314,7 @@ export class TicketStore {
     return {
       ticketId: ticket.ticketId,
       agentId: ticket.targetAgent,
+      targetAgent: ticket.targetAgent,  // Include for backward compatibility
       originAgent: ticket.originAgent,
       status: ticket.status,
       payload: ticket.payload,
