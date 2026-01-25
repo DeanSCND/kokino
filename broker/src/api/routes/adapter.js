@@ -34,12 +34,13 @@ export function createAdapterRoutes({ registry, ticketStore, agentRoutes }) {
           return jsonResponse(res, 400, { error: 'agentId is required' });
         }
 
-        // Create mock request for legacy handler
+        // Create mock request for legacy handler with Buffer data
         const mockReq = {
           ...req,
           on: (event, handler) => {
             if (event === 'data' && req.body) {
-              handler(JSON.stringify(req.body));
+              // Send as Buffer to match expected format
+              handler(Buffer.from(JSON.stringify(req.body)));
             }
             if (event === 'end') {
               handler();
@@ -75,7 +76,8 @@ export function createAdapterRoutes({ registry, ticketStore, agentRoutes }) {
             if (event === 'data' && req.body) {
               // Reformat body for legacy handler
               const legacyBody = { payload, metadata, expectReply, timeoutMs };
-              handler(JSON.stringify(legacyBody));
+              // Send as Buffer to match expected format
+              handler(Buffer.from(JSON.stringify(legacyBody)));
             }
             if (event === 'end') {
               handler();

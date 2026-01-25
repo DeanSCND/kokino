@@ -197,8 +197,15 @@ export class APIRouter {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const pathname = url.pathname;
 
-      // Remove /api prefix if present
-      const path = pathname.startsWith('/api/') ? pathname.slice(4) : pathname;
+      // Remove /api prefix if present, but keep the leading slash
+      let path = pathname;
+      if (pathname.startsWith('/api/')) {
+        path = pathname.slice(4); // Remove '/api'
+      }
+      // Ensure path starts with /
+      if (!path.startsWith('/')) {
+        path = '/' + path;
+      }
       req.path = path;
       req.query = Object.fromEntries(url.searchParams);
 
