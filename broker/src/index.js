@@ -18,6 +18,9 @@ import { jsonResponse, handleCors } from './utils/response.js';
 import { getMetricsCollector } from './telemetry/MetricsCollector.js';
 import { PrometheusExporter } from './telemetry/PrometheusExporter.js';
 import { EnvironmentDoctor } from './agents/EnvironmentDoctor.js';
+import { apiRouter } from './api/router.js';
+import { registerAdapterRoutes } from './api/routes/adapter.js';
+import { registerMetricsRoutes } from './api/routes/metrics.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
 const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
@@ -81,6 +84,15 @@ const agentRoutes = createAgentRoutes(registry, ticketStore, messageRepository, 
 const messageRoutes = createMessageRoutes(ticketStore, messageRepository);
 const githubRoutes = createGitHubRoutes();
 
+// Setup API router with adapter and metrics routes
+registerAdapterRoutes(apiRouter, {
+  registry,
+  ticketStore,
+  agentRoutes
+});
+registerMetricsRoutes(apiRouter);
+console.log('[broker] ✓ API router configured with adapter and metrics endpoints');
+
 // Cleanup old tickets every minute
 setInterval(() => {
   ticketStore.cleanup(60000); // Remove tickets older than 1 minute
@@ -130,6 +142,11 @@ const server = http.createServer(async (req, res) => {
   console.log(`[${method}] ${pathname}`);
 
   try {
+    // Handle /api/* routes through new API router
+    if (pathname.startsWith('/api/')) {
+      return apiRouter.handle(req, res);
+    }
+
     // Health check
     if (pathname === '/health') {
       return jsonResponse(res, 200, {
