@@ -21,6 +21,7 @@ import { EnvironmentDoctor } from './agents/EnvironmentDoctor.js';
 import { apiRouter } from './api/router.js';
 import { registerAdapterRoutes } from './api/routes/adapter.js';
 import { registerMetricsRoutes } from './api/routes/metrics.js';
+import { registerProjectRoutes } from './api/routes/projects.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
 const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
@@ -91,6 +92,7 @@ registerAdapterRoutes(apiRouter, {
   agentRoutes
 });
 registerMetricsRoutes(apiRouter);
+registerProjectRoutes(apiRouter);
 console.log('[broker] ✓ API router configured with adapter and metrics endpoints');
 
 // Cleanup old tickets every minute

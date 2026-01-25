@@ -17,7 +17,7 @@ import { LoopDetector } from '../utils/LoopDetector';
 import { EscalationTracker } from '../utils/EscalationTracker';
 import { GraphEnforcer } from '../utils/GraphEnforcer';
 import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle, Library, Clock, Github } from 'lucide-react';
-import broker from '../services/broker';
+import apiClient from '../services/api-client';
 import { GitHubIssues } from '../components/GitHubIssues';
 import { CreatePRDialog } from '../components/CreatePRDialog';
 import { BranchManager } from '../components/BranchManager';
@@ -244,7 +244,7 @@ export const Canvas = ({ setHeaderControls }) => {
                     name: name,
                     role: role,
                     status: 'registering',
-                    task: 'Registering with broker...',
+                    task: 'Registering with apiClient...',
                     onDelete: handleDeleteAgent
                 }
             };
@@ -252,16 +252,16 @@ export const Canvas = ({ setHeaderControls }) => {
             // Optimistic UI update
             setNodes((nds) => nds.concat(newNode));
 
-            // Phase 4: Register agent with broker
-            console.log(`[canvas] Attempting to register agent ${name} with broker...`);
+            // Phase 4: Register agent with apiClient
+            console.log(`[canvas] Attempting to register agent ${name} with API...`);
 
-            const result = await broker.registerAgent(name, {
+            const result = await apiClient.registerAgent(name, {
                 type: 'claude-code', // Use real CLI type for headless execution
                 metadata: { role, nodeId: id, commMode: 'headless' },
                 heartbeatIntervalMs: 30000
             });
 
-            console.log(`[canvas] ✓ Registered agent ${name} with broker:`, result);
+            console.log(`[canvas] ✓ Registered agent ${name} with apiClient:`, result);
 
             // Update node status after successful registration
             setNodes(nds => nds.map(n =>
@@ -301,17 +301,17 @@ export const Canvas = ({ setHeaderControls }) => {
 
             // Stop agent first (sets status to offline)
             try {
-                await broker.stopAgent(agentName);
+                await apiClient.stopAgent(agentName);
                 console.log(`[canvas] ✓ Stopped agent ${agentName}`);
             } catch (error) {
                 console.error(`[canvas] Failed to stop ${agentName}:`, error);
                 // Continue anyway
             }
 
-            // Delete agent from broker registry
+            // Delete agent from apiClient registry
             try {
-                await broker.deleteAgent(agentName);
-                console.log(`[canvas] ✓ Deleted agent ${agentName} from broker`);
+                await apiClient.deleteAgent(agentName);
+                console.log(`[canvas] ✓ Deleted agent ${agentName} from apiClient`);
             } catch (error) {
                 console.error(`[canvas] Failed to delete ${agentName}:`, error);
                 // Continue anyway - node is already removed from UI
@@ -319,7 +319,7 @@ export const Canvas = ({ setHeaderControls }) => {
 
             // Kill tmux session if it exists
             try {
-                await broker.killTmuxSession(agentName);
+                await apiClient.killTmuxSession(agentName);
                 console.log(`[canvas] ✓ Killed tmux session for ${agentName}`);
             } catch (error) {
                 console.error(`[canvas] Failed to kill tmux session for ${agentName}:`, error);
@@ -362,16 +362,16 @@ export const Canvas = ({ setHeaderControls }) => {
                         name: agentDef.role,
                         role: agentDef.role,
                         status: 'registering',
-                        task: 'Registering with broker...',
+                        task: 'Registering with apiClient...',
                         onDelete: handleDeleteAgent
                     }
                 };
 
                 newNodes.push(newNode);
 
-                // Register with broker
+                // Register with apiClient
                 try {
-                    await broker.registerAgent(agentDef.role, {
+                    await apiClient.registerAgent(agentDef.role, {
                         type: agentDef.type || 'claude-code',
                         metadata: agentDef.metadata || {}
                     });
@@ -492,7 +492,7 @@ export const Canvas = ({ setHeaderControls }) => {
         }));
 
         try {
-            await broker.stopAgent(agentName);
+            await apiClient.stopAgent(agentName);
             console.log(`[lifecycle] Stopped agent: ${agentName}`);
 
             // Update to final state
@@ -531,7 +531,7 @@ export const Canvas = ({ setHeaderControls }) => {
         }));
 
         try {
-            const result = await broker.startAgent(agentName);
+            const result = await apiClient.startAgent(agentName);
             console.log(`[lifecycle] Started agent: ${agentName}`, result);
 
             // Issue #110: Update to ready state after successful bootstrap
@@ -570,7 +570,7 @@ export const Canvas = ({ setHeaderControls }) => {
         }));
 
         try {
-            await broker.restartAgent(agentName);
+            await apiClient.restartAgent(agentName);
             console.log(`[lifecycle] Restarted agent: ${agentName}`);
 
             // Update to final state after a brief delay (restart takes ~100ms)
@@ -721,7 +721,7 @@ export const Canvas = ({ setHeaderControls }) => {
     useEffect(() => {
         if (!isOrchestrating || nodes.length === 0) return;
 
-        // Real conversation flow through broker
+        // Real conversation flow through apiClient
         const orchestrateTeam = async () => {
             // Get agent names from current nodes
             const agentNames = nodes.map(n => n.data.name);
@@ -755,7 +755,7 @@ export const Canvas = ({ setHeaderControls }) => {
             console.log(`[orchestration] Starting agents in tmux...`);
             for (const agentName of agentNames) {
                 try {
-                    const result = await broker.startAgent(agentName);
+                    const result = await apiClient.startAgent(agentName);
                     console.log(`[orchestration] ✓ Started ${agentName} in session ${result.tmux}`);
                 } catch (error) {
                     console.error(`[orchestration] ✗ Failed to start ${agentName}:`, error.message);
@@ -789,7 +789,7 @@ export const Canvas = ({ setHeaderControls }) => {
 
                 const msg = conversations[i];
 
-                // Send message through broker
+                // Send message through apiClient
                 if (msg.to) {
                     // Phase 8: Validate communication path before sending
                     if (graphEnforcerRef.current) {
@@ -801,7 +801,7 @@ export const Canvas = ({ setHeaderControls }) => {
                     }
 
                     try {
-                        const result = await broker.sendMessage(msg.to, {
+                        const result = await apiClient.sendMessage(msg.to, {
                             payload: msg.content,
                             metadata: { origin: msg.from, timestamp: Date.now() }
                         });
@@ -866,17 +866,17 @@ export const Canvas = ({ setHeaderControls }) => {
 
         // Cleanup on unmount or stop
         return () => {
-            // Future: cancel pending broker requests
+            // Future: cancel pending apiClient requests
         };
     }, [isOrchestrating, nodes, edges, isPaused, stepMode, setChatMessages, setNodes]);
 
-    // Poll broker for agent status updates (continuous, not just during orchestration)
+    // Poll apiClient for agent status updates (continuous, not just during orchestration)
     useEffect(() => {
         const interval = setInterval(async () => {
             try {
-                const agents = await broker.listAgents({ status: 'online' });
+                const agents = await apiClient.listAgents({ status: 'online' });
 
-                // Update node statuses from broker data
+                // Update node statuses from apiClient data
                 setNodes(nds => nds.map(node => {
                     const agentData = agents.find(a => a.agentId === node.data.name);
                     if (agentData) {
@@ -900,7 +900,7 @@ export const Canvas = ({ setHeaderControls }) => {
         return () => clearInterval(interval);
     }, [setNodes]);
 
-    // Poll broker for pending tickets (inbound messages)
+    // Poll apiClient for pending tickets (inbound messages)
     useEffect(() => {
         if (nodes.length === 0) return;
 
@@ -909,7 +909,7 @@ export const Canvas = ({ setHeaderControls }) => {
             for (const node of nodes) {
                 const agentName = node.data.name;
                 try {
-                    const pending = await broker.getPendingTickets(agentName);
+                    const pending = await apiClient.getPendingTickets(agentName);
 
                     if (pending.length > 0) {
                         console.log(`[ticket-poll] ${agentName} has ${pending.length} pending tickets`);
@@ -941,7 +941,7 @@ export const Canvas = ({ setHeaderControls }) => {
 
     // Legacy mock conversations for fallback
     useEffect(() => {
-        // This effect is now replaced by real broker orchestration above
+        // This effect is now replaced by real apiClient orchestration above
         return;
 
         const mockConversations = [

@@ -3,7 +3,7 @@ import { X, Send, Loader2, MessageSquare, Trash2 } from 'lucide-react';
 import { ChatBubble } from './ChatBubble';
 import { useConversation } from '../hooks/useConversation';
 import { useAgentExecute } from '../hooks/useAgentExecute';
-import broker from '../services/broker';
+import apiClient from '../services/api-client';
 
 /**
  * AgentChatPanel - Full chat interface for headless agent execution

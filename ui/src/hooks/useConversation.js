@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import broker from '../services/broker';
+import apiClient from '../services/api-client';
 
 /**
  * Hook for fetching and polling conversation history
@@ -25,7 +25,7 @@ export const useConversation = (conversationId, options = {}) => {
     }
 
     try {
-      const data = await broker.getConversation(conversationId);
+      const data = await apiClient.getConversation(conversationId);
       setConversation(data);
       setTurns(data.turns || []);
       setError(null);
