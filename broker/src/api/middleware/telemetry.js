@@ -112,9 +112,11 @@ export function telemetryMiddleware(options = {}) {
         success
       });
 
-      // Add request ID to response headers
-      res.setHeader('X-Request-Id', requestId);
-      res.setHeader('X-Response-Time', `${durationMs}ms`);
+      // Add request ID to response headers (only if not already sent)
+      if (!res.headersSent) {
+        res.setHeader('X-Request-Id', requestId);
+        res.setHeader('X-Response-Time', `${durationMs}ms`);
+      }
 
       // Call original end
       return originalEnd.call(this, chunk, encoding);
@@ -157,7 +159,10 @@ export function requestIdMiddleware() {
     if (!req.id) {
       req.id = req.headers['x-request-id'] || generateRequestId();
     }
-    res.setHeader('X-Request-Id', req.id);
+    // Set header early, before any response is written
+    if (!res.headersSent) {
+      res.setHeader('X-Request-Id', req.id);
+    }
     next();
   };
 }

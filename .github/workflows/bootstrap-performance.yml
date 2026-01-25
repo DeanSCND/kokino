@@ -1,0 +1,79 @@
+name: Bootstrap Performance Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'broker/**'
+      - '.github/workflows/bootstrap-performance.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'broker/**'
+      - '.github/workflows/bootstrap-performance.yml'
+
+jobs:
+  performance-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: broker/package-lock.json
+
+    - name: Install broker dependencies
+      working-directory: broker
+      run: npm ci
+
+    - name: Start broker in background
+      working-directory: broker
+      run: |
+        npm start &
+        sleep 5  # Give broker time to start
+
+    - name: Check broker health
+      run: |
+        curl -f http://127.0.0.1:5050/health || exit 1
+
+    - name: Run bootstrap performance test
+      working-directory: broker
+      run: node tests/bootstrap-performance.js
+      env:
+        BROKER_URL: http://127.0.0.1:5050
+
+    - name: Upload metrics if failed
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-metrics
+        path: broker/data/metrics.db
+        retention-days: 7
+
+    - name: Comment on PR with results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const result = ${{ job.status == 'success' }} ? '✅ PASS' : '❌ FAIL';
+          const comment = `## Bootstrap Performance Test: ${result}
+
+          Target: <10s bootstrap time
+
+          View full [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
