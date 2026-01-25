@@ -48,53 +48,45 @@ export function createAgentConfigRoutes(registry) {
      * POST /api/agents
      */
     createAgent: (req, res) => {
-      let body = '';
+      try {
+        const data = req.body || {};
 
-      req.on('data', chunk => {
-        body += chunk.toString();
-      });
+        // Create and validate new config
+        const config = new AgentConfig({
+          projectId: data.projectId || 'default',
+          name: data.name,
+          role: data.role,
+          cliType: data.cliType || 'claude-code',
+          systemPrompt: data.systemPrompt,
+          workingDirectory: data.workingDirectory,
+          bootstrapMode: data.bootstrapMode || 'auto',
+          bootstrapScript: data.bootstrapScript,
+          capabilities: data.capabilities || [],
+          metadata: data.metadata || {}
+        });
 
-      req.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-
-          // Create and validate new config
-          const config = new AgentConfig({
-            projectId: data.projectId || 'default',
-            name: data.name,
-            role: data.role,
-            cliType: data.cliType || 'claude-code',
-            systemPrompt: data.systemPrompt,
-            workingDirectory: data.workingDirectory,
-            bootstrapMode: data.bootstrapMode || 'auto',
-            bootstrapScript: data.bootstrapScript,
-            capabilities: data.capabilities || [],
-            metadata: data.metadata || {}
+        // Validate
+        const errors = config.validate();
+        if (errors.length > 0) {
+          return jsonResponse(res, 400, {
+            error: 'Validation failed',
+            details: errors
           });
-
-          // Validate
-          const errors = config.validate();
-          if (errors.length > 0) {
-            return jsonResponse(res, 400, {
-              error: 'Validation failed',
-              details: errors
-            });
-          }
-
-          // Save to database
-          config.save();
-
-          console.log(`[api/agents] Created agent config: ${config.name} (${config.id})`);
-
-          jsonResponse(res, 201, {
-            success: true,
-            agent: config.toJSON()
-          });
-        } catch (error) {
-          console.error('[api/agents] Failed to create agent:', error);
-          jsonResponse(res, 500, { error: error.message });
         }
-      });
+
+        // Save to database
+        config.save();
+
+        console.log(`[api/agents] Created agent config: ${config.name} (${config.id})`);
+
+        jsonResponse(res, 201, {
+          success: true,
+          agent: config.toJSON()
+        });
+      } catch (error) {
+        console.error('[api/agents] Failed to create agent:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
     },
 
     /**
@@ -121,56 +113,48 @@ export function createAgentConfigRoutes(registry) {
      * PUT /api/agents/:id
      */
     updateAgent: (req, res, params) => {
-      let body = '';
+      try {
+        const data = req.body || {};
 
-      req.on('data', chunk => {
-        body += chunk.toString();
-      });
-
-      req.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-
-          // Find existing config
-          const config = AgentConfig.findById(params.id);
-          if (!config) {
-            return jsonResponse(res, 404, { error: 'Agent configuration not found' });
-          }
-
-          // Update fields
-          if (data.name !== undefined) config.name = data.name;
-          if (data.role !== undefined) config.role = data.role;
-          if (data.cliType !== undefined) config.cliType = data.cliType;
-          if (data.systemPrompt !== undefined) config.systemPrompt = data.systemPrompt;
-          if (data.workingDirectory !== undefined) config.workingDirectory = data.workingDirectory;
-          if (data.bootstrapMode !== undefined) config.bootstrapMode = data.bootstrapMode;
-          if (data.bootstrapScript !== undefined) config.bootstrapScript = data.bootstrapScript;
-          if (data.capabilities !== undefined) config.capabilities = data.capabilities;
-          if (data.metadata !== undefined) config.metadata = data.metadata;
-
-          // Validate
-          const errors = config.validate();
-          if (errors.length > 0) {
-            return jsonResponse(res, 400, {
-              error: 'Validation failed',
-              details: errors
-            });
-          }
-
-          // Save changes
-          config.save();
-
-          console.log(`[api/agents] Updated agent config: ${config.name} (${config.id})`);
-
-          jsonResponse(res, 200, {
-            success: true,
-            agent: config.toJSON()
-          });
-        } catch (error) {
-          console.error('[api/agents] Failed to update agent:', error);
-          jsonResponse(res, 500, { error: error.message });
+        // Find existing config
+        const config = AgentConfig.findById(params.id);
+        if (!config) {
+          return jsonResponse(res, 404, { error: 'Agent configuration not found' });
         }
-      });
+
+        // Update fields
+        if (data.name !== undefined) config.name = data.name;
+        if (data.role !== undefined) config.role = data.role;
+        if (data.cliType !== undefined) config.cliType = data.cliType;
+        if (data.systemPrompt !== undefined) config.systemPrompt = data.systemPrompt;
+        if (data.workingDirectory !== undefined) config.workingDirectory = data.workingDirectory;
+        if (data.bootstrapMode !== undefined) config.bootstrapMode = data.bootstrapMode;
+        if (data.bootstrapScript !== undefined) config.bootstrapScript = data.bootstrapScript;
+        if (data.capabilities !== undefined) config.capabilities = data.capabilities;
+        if (data.metadata !== undefined) config.metadata = data.metadata;
+
+        // Validate
+        const errors = config.validate();
+        if (errors.length > 0) {
+          return jsonResponse(res, 400, {
+            error: 'Validation failed',
+            details: errors
+          });
+        }
+
+        // Save changes
+        config.save();
+
+        console.log(`[api/agents] Updated agent config: ${config.name} (${config.id})`);
+
+        jsonResponse(res, 200, {
+          success: true,
+          agent: config.toJSON()
+        });
+      } catch (error) {
+        console.error('[api/agents] Failed to update agent:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
     },
 
     /**
@@ -208,36 +192,28 @@ export function createAgentConfigRoutes(registry) {
      * POST /api/agents/:id/clone
      */
     cloneAgent: (req, res, params) => {
-      let body = '';
+      try {
+        const data = req.body || {};
 
-      req.on('data', chunk => {
-        body += chunk.toString();
-      });
-
-      req.on('end', () => {
-        try {
-          const data = body ? JSON.parse(body) : {};
-
-          // Find original config
-          const original = AgentConfig.findById(params.id);
-          if (!original) {
-            return jsonResponse(res, 404, { error: 'Agent configuration not found' });
-          }
-
-          // Clone with optional new name
-          const clone = original.clone(data.name);
-
-          console.log(`[api/agents] Cloned agent config: ${original.name} -> ${clone.name}`);
-
-          jsonResponse(res, 201, {
-            success: true,
-            agent: clone.toJSON()
-          });
-        } catch (error) {
-          console.error('[api/agents] Failed to clone agent:', error);
-          jsonResponse(res, 500, { error: error.message });
+        // Find original config
+        const original = AgentConfig.findById(params.id);
+        if (!original) {
+          return jsonResponse(res, 404, { error: 'Agent configuration not found' });
         }
-      });
+
+        // Clone with optional new name
+        const clone = original.clone(data.name);
+
+        console.log(`[api/agents] Cloned agent config: ${original.name} -> ${clone.name}`);
+
+        jsonResponse(res, 201, {
+          success: true,
+          agent: clone.toJSON()
+        });
+      } catch (error) {
+        console.error('[api/agents] Failed to clone agent:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
     },
 
     /**
@@ -247,53 +223,46 @@ export function createAgentConfigRoutes(registry) {
      * Creates a runtime agent from a configuration template
      */
     instantiateAgent: (req, res, params) => {
-      let body = '';
+      try {
+        const data = req.body || {};
 
-      req.on('data', chunk => {
-        body += chunk.toString();
-      });
-
-      req.on('end', () => {
-        try {
-          const data = body ? JSON.parse(body) : {};
-
-          // Find config
-          const config = AgentConfig.findById(params.id);
-          if (!config) {
-            return jsonResponse(res, 404, { error: 'Agent configuration not found' });
-          }
-
-          // Generate runtime agent data
-          const agentData = config.instantiate(data.name);
-
-          // Register the agent
-          const agent = registry.register(
-            agentData.agentId,
-            agentData.type,
-            agentData.metadata
-          );
-
-          // Update agent with config reference
-          agent.configId = config.id;
-          agent.commMode = agentData.commMode;
-
-          console.log(`[api/agents] Instantiated agent ${agent.agentId} from config ${config.name}`);
-
-          jsonResponse(res, 201, {
-            success: true,
-            agent: {
-              agentId: agent.agentId,
-              configId: config.id,
-              type: agent.type,
-              status: agent.status,
-              metadata: agent.metadata
-            }
-          });
-        } catch (error) {
-          console.error('[api/agents] Failed to instantiate agent:', error);
-          jsonResponse(res, 500, { error: error.message });
+        // Find config
+        const config = AgentConfig.findById(params.id);
+        if (!config) {
+          return jsonResponse(res, 404, { error: 'Agent configuration not found' });
         }
-      });
+
+        // Generate runtime agent data
+        const agentData = config.instantiate(data.name);
+
+        // Register the agent with correct options object
+        const agent = registry.register(agentData.agentId, {
+          type: agentData.type,
+          metadata: {
+            ...agentData.metadata,
+            configId: config.id,
+            commMode: agentData.commMode,
+            projectId: config.projectId
+          }
+        });
+
+        console.log(`[api/agents] Instantiated agent ${agent.agentId} from config ${config.name}`);
+
+        jsonResponse(res, 201, {
+          success: true,
+          agent: {
+            agentId: agent.agentId,
+            configId: config.id,
+            projectId: config.projectId,
+            type: agent.type,
+            status: agent.status,
+            metadata: agent.metadata
+          }
+        });
+      } catch (error) {
+        console.error('[api/agents] Failed to instantiate agent:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
     },
 
     /**

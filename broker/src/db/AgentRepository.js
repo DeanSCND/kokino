@@ -4,8 +4,8 @@ export class AgentRepository {
   constructor() {
     // Prepared statements for performance
     this.insertStmt = db.prepare(`
-      INSERT INTO agents (agent_id, type, status, comm_mode, metadata, heartbeat_interval_ms, last_heartbeat, created_at, updated_at)
-      VALUES (@agentId, @type, @status, @commMode, @metadata, @heartbeatIntervalMs, @lastHeartbeat, @createdAt, @updatedAt)
+      INSERT INTO agents (agent_id, type, status, comm_mode, metadata, heartbeat_interval_ms, last_heartbeat, project_id, config_id, created_at, updated_at)
+      VALUES (@agentId, @type, @status, @commMode, @metadata, @heartbeatIntervalMs, @lastHeartbeat, @projectId, @configId, @createdAt, @updatedAt)
       ON CONFLICT(agent_id) DO UPDATE SET
         type = @type,
         status = @status,
@@ -13,6 +13,8 @@ export class AgentRepository {
         metadata = @metadata,
         heartbeat_interval_ms = @heartbeatIntervalMs,
         last_heartbeat = @lastHeartbeat,
+        project_id = @projectId,
+        config_id = @configId,
         updated_at = @updatedAt
     `);
 
@@ -36,6 +38,8 @@ export class AgentRepository {
       metadata: JSON.stringify(record.metadata || {}),
       heartbeatIntervalMs: record.heartbeatIntervalMs || 30000,
       lastHeartbeat: record.lastHeartbeat || now,
+      projectId: record.projectId || null,
+      configId: record.configId || null,
       createdAt: record.createdAt || now,
       updatedAt: now
     });
@@ -86,6 +90,8 @@ export class AgentRepository {
       metadata: JSON.parse(row.metadata || '{}'),
       heartbeatIntervalMs: row.heartbeat_interval_ms,
       lastHeartbeat: row.last_heartbeat,
+      projectId: row.project_id,
+      configId: row.config_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

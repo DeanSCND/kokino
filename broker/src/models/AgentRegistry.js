@@ -17,10 +17,16 @@ export class AgentRegistry {
     // Extract commMode from metadata if provided, otherwise default to tmux
     const commMode = metadata.commMode ?? existing?.commMode ?? 'tmux';
 
+    // Extract projectId and configId from metadata for Phase 2 linkage
+    const projectId = metadata.projectId ?? existing?.projectId ?? null;
+    const configId = metadata.configId ?? existing?.configId ?? null;
+
     const record = {
       agentId,
       type: type ?? existing?.type ?? 'unknown',
       commMode,
+      projectId,
+      configId,
       metadata: { ...existing?.metadata, ...metadata },
       status: 'idle',  // Issue #110: Start in idle state, require explicit start
       lastHeartbeat: now,
@@ -28,7 +34,7 @@ export class AgentRegistry {
     };
 
     this.repo.save(record);
-    console.log(`[registry] Registered agent: ${agentId} (${type}, commMode: ${commMode})`);
+    console.log(`[registry] Registered agent: ${agentId} (${type}, commMode: ${commMode}, project: ${projectId}, config: ${configId})`);
     return record;
   }
 
