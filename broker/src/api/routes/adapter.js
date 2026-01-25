@@ -208,8 +208,23 @@ export function createAdapterRoutes({ registry, ticketStore, agentRoutes }) {
      */
     async listAgents(req, res) {
       try {
-        // Call existing handler
-        return await agentRoutes.list(req, res);
+        // Create a mock response to capture the data
+        const mockRes = {
+          writeHead: () => {},
+          setHeader: () => {},
+          end: function(data) {
+            // Parse the response and wrap it
+            try {
+              const agents = JSON.parse(data);
+              jsonResponse(res, 200, { agents });
+            } catch (err) {
+              jsonResponse(res, 200, { agents: [] });
+            }
+          }
+        };
+
+        // Call existing handler with mock response
+        return await agentRoutes.list(req, mockRes);
 
       } catch (error) {
         console.error('[Adapter] List error:', error);
