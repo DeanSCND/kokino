@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import broker from '../services/broker';
+import apiClient from '../services/api-client';
 
 /**
  * Hook to monitor broker connection health
@@ -15,7 +15,7 @@ export function useBrokerHealth(intervalMs = 5000) {
 
     const checkHealth = async () => {
       try {
-        const response = await broker.health();
+        const response = await apiClient.health();
 
         if (mounted) {
           setIsConnected(true);

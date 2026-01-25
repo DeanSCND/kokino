@@ -309,6 +309,189 @@ export function createAdapterRoutes({ registry, ticketStore, agentRoutes }) {
         console.error('[Adapter] Heartbeat error:', error);
         jsonResponse(res, 500, { error: error.message });
       }
+    },
+
+    /**
+     * GET /api/adapter/health
+     * Health check endpoint
+     */
+    async health(req, res) {
+      try {
+        const agents = await registry.listAgents();
+        const tickets = await ticketStore.getAllTickets();
+
+        jsonResponse(res, 200, {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          agents: {
+            total: agents.length,
+            online: agents.filter(a => a.status === 'online').length
+          },
+          tickets: {
+            total: tickets.length,
+            pending: tickets.filter(t => t.status === 'pending').length
+          }
+        });
+      } catch (error) {
+        console.error('[Adapter] Health check error:', error);
+        jsonResponse(res, 503, {
+          status: 'unhealthy',
+          error: error.message
+        });
+      }
+    },
+
+    /**
+     * POST /api/adapter/execute
+     * Execute task on agent (headless mode)
+     */
+    async executeTask(req, res) {
+      try {
+        const { agentId, prompt, timeoutMs, metadata } = req.body;
+
+        if (!agentId || !prompt) {
+          return jsonResponse(res, 400, {
+            error: 'agentId and prompt are required'
+          });
+        }
+
+        // For now, delegate to send message with special metadata
+        // TODO: Implement proper headless execution
+        const mockReq = {
+          ...req,
+          on: (event, handler) => {
+            if (event === 'data') {
+              const body = {
+                payload: prompt,
+                metadata: { ...metadata, type: 'execute_task' },
+                expectReply: true,
+                timeoutMs: timeoutMs || 30000
+              };
+              handler(Buffer.from(JSON.stringify(body)));
+            }
+            if (event === 'end') handler();
+          }
+        };
+
+        return await agentRoutes.send(mockReq, res, agentId);
+
+      } catch (error) {
+        console.error('[Adapter] Execute task error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    /**
+     * POST /api/adapter/execute/cancel
+     * Cancel executing task on agent
+     */
+    async cancelExecution(req, res) {
+      try {
+        const { agentId } = req.body;
+
+        if (!agentId) {
+          return jsonResponse(res, 400, { error: 'agentId is required' });
+        }
+
+        // TODO: Implement proper cancellation
+        // For now, return success
+        jsonResponse(res, 200, {
+          success: true,
+          message: 'Execution cancellation requested'
+        });
+
+      } catch (error) {
+        console.error('[Adapter] Cancel execution error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    /**
+     * GET /api/adapter/conversations/:agentId
+     * Get conversations for an agent
+     */
+    async getConversations(req, res) {
+      try {
+        const agentId = req.params.agentId;
+
+        if (!agentId) {
+          return jsonResponse(res, 400, { error: 'agentId is required' });
+        }
+
+        // TODO: Implement conversation retrieval
+        // For now, return empty array
+        jsonResponse(res, 200, []);
+
+      } catch (error) {
+        console.error('[Adapter] Get conversations error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    /**
+     * GET /api/adapter/conversation/:id
+     * Get specific conversation
+     */
+    async getConversation(req, res) {
+      try {
+        const conversationId = req.params.id;
+
+        if (!conversationId) {
+          return jsonResponse(res, 400, { error: 'conversationId is required' });
+        }
+
+        // TODO: Implement conversation retrieval
+        // For now, return null
+        jsonResponse(res, 404, { error: 'Conversation not found' });
+
+      } catch (error) {
+        console.error('[Adapter] Get conversation error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    /**
+     * POST /api/adapter/end-session
+     * End agent session
+     */
+    async endSession(req, res) {
+      try {
+        const { agentId } = req.body;
+
+        if (!agentId) {
+          return jsonResponse(res, 400, { error: 'agentId is required' });
+        }
+
+        // Delegate to stop agent
+        return await this.stop(req, res);
+
+      } catch (error) {
+        console.error('[Adapter] End session error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
+    },
+
+    /**
+     * GET /api/adapter/sessions/status
+     * Get session status
+     */
+    async getSessionStatus(req, res) {
+      try {
+        const agents = await registry.listAgents();
+
+        jsonResponse(res, 200, {
+          sessions: agents.map(agent => ({
+            agentId: agent.agentId,
+            status: agent.status,
+            commMode: agent.commMode,
+            lastHeartbeat: agent.lastHeartbeat
+          }))
+        });
+
+      } catch (error) {
+        console.error('[Adapter] Get session status error:', error);
+        jsonResponse(res, 500, { error: error.message });
+      }
     }
   };
 }
@@ -334,5 +517,14 @@ export function registerAdapterRoutes(router, deps) {
   router.post('/adapter/kill-tmux', handlers.killTmux);
   router.post('/adapter/heartbeat', handlers.heartbeat);
 
-  console.log('[Adapter] Registered 10 adapter endpoints');
+  // New endpoints for complete Canvas support
+  router.get('/adapter/health', handlers.health);
+  router.post('/adapter/execute', handlers.executeTask);
+  router.post('/adapter/execute/cancel', handlers.cancelExecution);
+  router.get('/adapter/conversations/:agentId', handlers.getConversations);
+  router.get('/adapter/conversation/:id', handlers.getConversation);
+  router.post('/adapter/end-session', handlers.endSession);
+  router.get('/adapter/sessions/status', handlers.getSessionStatus);
+
+  console.log('[Adapter] Registered 17 adapter endpoints');
 }

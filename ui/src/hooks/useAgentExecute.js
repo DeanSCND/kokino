@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import broker from '../services/broker';
+import apiClient from '../services/api-client';
 
 /**
  * Hook for executing tasks on headless agents
@@ -17,7 +17,7 @@ export const useAgentExecute = (agentId) => {
     setError(null);
 
     try {
-      const result = await broker.executeTask(agentId, {
+      const result = await apiClient.executeTask(agentId, {
         prompt,
         timeoutMs: options.timeoutMs || 300000, // 5 min default
         metadata: options.metadata || {}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Clock, MessageSquare, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
-import broker from '../services/broker';
+import apiClient from '../services/api-client';
 
 export const AgentDashboard = () => {
     const [agents, setAgents] = useState([]);
@@ -11,7 +11,7 @@ export const AgentDashboard = () => {
     useEffect(() => {
         const fetchAgents = async () => {
             try {
-                const agentList = await broker.listAgents();
+                const agentList = await apiClient.listAgents();
                 setAgents(agentList);
             } catch (error) {
                 console.error('[dashboard] Failed to fetch agents:', error);
