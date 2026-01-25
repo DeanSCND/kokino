@@ -153,59 +153,66 @@ class RestApiClient {
     });
   }
 
-  // Headless Execution - Not yet implemented in adapter
-  // These will need new adapter endpoints
+  // Headless Execution - Fallback to direct broker until adapter endpoints ready
+  // These methods use broker directly to maintain functionality
 
   async executeTask(agentId, { prompt, timeoutMs, metadata }) {
-    // TODO: Add /api/adapter/execute endpoint
-    throw new Error('executeTask not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    console.warn('[api-client] executeTask falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.executeTask(agentId, { prompt, timeoutMs, metadata });
   }
 
   async cancelExecution(agentId) {
-    // TODO: Add /api/adapter/execute/cancel endpoint
-    throw new Error('cancelExecution not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    console.warn('[api-client] cancelExecution falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.cancelExecution(agentId);
   }
 
   async endSession(agentId) {
-    // TODO: Add /api/adapter/end-session endpoint
-    throw new Error('endSession not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    console.warn('[api-client] endSession falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.endSession(agentId);
   }
 
   async getSessionStatus() {
-    // TODO: Add /api/adapter/sessions/status endpoint
-    throw new Error('getSessionStatus not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    console.warn('[api-client] getSessionStatus falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.getSessionStatus();
   }
 
   async getConversations(agentId) {
-    // TODO: Add /api/adapter/conversations/:agentId endpoint
-    throw new Error('getConversations not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    console.warn('[api-client] getConversations falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.getConversations(agentId);
   }
 
   async getConversation(conversationId) {
-    // TODO: Add /api/adapter/conversation/:id endpoint
-    throw new Error('getConversation not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    console.warn('[api-client] getConversation falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.getConversation(conversationId);
   }
 
   async deleteConversation(conversationId) {
-    // TODO: Add /api/adapter/conversation/:id endpoint
-    throw new Error('deleteConversation not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    console.warn('[api-client] deleteConversation falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.deleteConversation(conversationId);
   }
 
-  // Reply management - Not used in Canvas but part of broker interface
+  // Reply management - Fallback to direct broker until adapter endpoints ready
 
   async postReply(ticketId, payload, metadata = {}) {
-    // TODO: Add /api/adapter/reply endpoint if needed
-    throw new Error('postReply not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    return broker.postReply(ticketId, payload, metadata);
   }
 
   async getReply(ticketId) {
-    // TODO: Add /api/adapter/reply/:ticketId endpoint if needed
-    throw new Error('getReply not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    return broker.getReply(ticketId);
   }
 
   async waitForReply(ticketId) {
-    // TODO: Add /api/adapter/reply/:ticketId/wait endpoint if needed
-    throw new Error('waitForReply not yet implemented in REST API mode');
+    // Fallback to direct broker call for now
+    return broker.waitForReply(ticketId);
   }
 
   // System
