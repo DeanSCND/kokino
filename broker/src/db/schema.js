@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { getMigrator } from './migrator.js';
 
 const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'kokino.db');
 
@@ -138,5 +139,23 @@ db.exec(`
 `);
 
 console.log('[db] ✓ Database schema initialized');
+
+// Run migrations
+const migrator = getMigrator(db);
+try {
+  const migrationsApplied = migrator.migrate();
+  if (migrationsApplied > 0) {
+    console.log(`[db] ✓ Applied ${migrationsApplied} migration(s)`);
+  }
+
+  // Verify integrity
+  if (!migrator.verifyIntegrity()) {
+    console.error('[db] ⚠️  Migration integrity check failed - migrations may have been modified after applying');
+  }
+} catch (error) {
+  console.error('[db] Failed to run migrations:', error.message);
+  // Don't exit - allow broker to start even if migrations fail
+  // This ensures we can still debug the issue
+}
 
 export default db;

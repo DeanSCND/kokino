@@ -5,6 +5,9 @@ import * as fs from 'node:fs';
 /**
  * Telemetry Events Schema
  *
+ * HTTP API:
+ * - HTTP_REQUEST, HTTP_REQUEST_ERROR, SLO_VIOLATION
+ *
  * Execution lifecycle:
  * - EXECUTION_STARTED, EXECUTION_COMPLETED, EXECUTION_FAILED,
  * - EXECUTION_TIMEOUT, EXECUTION_CANCELLED
@@ -366,6 +369,182 @@ export class MetricsCollector {
 
     const result = stmt.run(retentionDays);
     console.log(`[MetricsCollector] Cleaned up ${result.changes} old metrics (retention: ${retentionDays} days)`);
+    return result.changes;
+  }
+
+  /**
+   * Record HTTP endpoint-specific metrics
+   * Tracks per-endpoint latency and success rates
+   *
+   * @param {string} endpoint - Endpoint pattern (e.g., "GET /api/agents")
+   * @param {object} options - Metric data
+   */
+  recordEndpointMetric(endpoint, options = {}) {
+    const { durationMs, statusCode, success } = options;
+
+    // Store in metrics table with HTTP_ENDPOINT event type
+    this.record('HTTP_ENDPOINT', 'broker', {
+      durationMs,
+      success,
+      metadata: {
+        endpoint,
+        statusCode
+      }
+    });
+  }
+
+  /**
+   * Get endpoint performance metrics
+   * Returns P50, P95, P99 latencies and success rates per endpoint
+   *
+   * @param {number} windowHours - Time window in hours (default: 1)
+   * @returns {object} Endpoint metrics grouped by endpoint
+   */
+  getEndpointMetrics(windowHours = 1) {
+    const stmt = this.db.prepare(`
+      SELECT
+        json_extract(metadata, '$.endpoint') as endpoint,
+        COUNT(*) as requests,
+        AVG(duration_ms) as avg_latency,
+        MIN(duration_ms) as min_latency,
+        MAX(duration_ms) as max_latency,
+        SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate
+      FROM metrics
+      WHERE event = 'HTTP_ENDPOINT'
+        AND timestamp >= datetime('now', '-' || ? || ' hours')
+        AND json_extract(metadata, '$.endpoint') IS NOT NULL
+      GROUP BY endpoint
+      ORDER BY requests DESC
+    `);
+
+    const endpoints = stmt.all(windowHours);
+
+    // Calculate percentiles for each endpoint
+    const result = {};
+    for (const endpoint of endpoints) {
+      const percentileStmt = this.db.prepare(`
+        SELECT duration_ms
+        FROM metrics
+        WHERE event = 'HTTP_ENDPOINT'
+          AND json_extract(metadata, '$.endpoint') = ?
+          AND timestamp >= datetime('now', '-' || ? || ' hours')
+          AND duration_ms IS NOT NULL
+        ORDER BY duration_ms ASC
+      `);
+
+      const durations = percentileStmt.all(endpoint.endpoint, windowHours).map(r => r.duration_ms);
+
+      result[endpoint.endpoint] = {
+        requests: endpoint.requests,
+        successRate: endpoint.success_rate,
+        latency: {
+          min: endpoint.min_latency,
+          avg: Math.round(endpoint.avg_latency),
+          max: endpoint.max_latency,
+          p50: this.calculatePercentile(durations, 50),
+          p95: this.calculatePercentile(durations, 95),
+          p99: this.calculatePercentile(durations, 99)
+        }
+      };
+    }
+
+    return result;
+  }
+
+  /**
+   * Calculate a specific percentile from an array of values
+   *
+   * @param {number[]} values - Sorted array of values
+   * @param {number} percentile - Percentile to calculate (0-100)
+   * @returns {number} Percentile value
+   */
+  calculatePercentile(values, percentile) {
+    if (values.length === 0) return 0;
+
+    const index = Math.ceil((percentile / 100) * values.length) - 1;
+    return values[Math.max(0, Math.min(index, values.length - 1))];
+  }
+
+  /**
+   * Get metrics dashboard data
+   * Aggregates all key metrics for display
+   *
+   * @returns {object} Dashboard metrics
+   */
+  getDashboardMetrics() {
+    const now = new Date();
+
+    return {
+      timestamp: now.toISOString(),
+      slo: {
+        availability: {
+          current: this.getAvailability(1), // Last hour
+          daily: this.getAvailability(24),
+          monthly: this.getAvailability(24 * 30),
+          target: 0.995
+        },
+        latency: {
+          p50: this.getLatencyPercentile(50, 1),
+          p95: this.getLatencyPercentile(95, 1),
+          p99: this.getLatencyPercentile(99, 1),
+          targetP95: 30000 // 30s
+        }
+      },
+      endpoints: this.getEndpointMetrics(1), // Last hour
+      recentErrors: this.getRecentErrors(10),
+      requestRate: this.getRequestRate(60) // Last 60 minutes
+    };
+  }
+
+  /**
+   * Get recent errors for debugging
+   *
+   * @param {number} limit - Maximum number of errors to return
+   * @returns {Array} Recent error entries
+   */
+  getRecentErrors(limit = 10) {
+    const stmt = this.db.prepare(`
+      SELECT
+        event,
+        agent_id,
+        json_extract(metadata, '$.error') as error,
+        json_extract(metadata, '$.path') as path,
+        json_extract(metadata, '$.method') as method,
+        timestamp
+      FROM metrics
+      WHERE event IN ('HTTP_REQUEST_ERROR', 'EXECUTION_FAILED', 'EXECUTION_TIMEOUT')
+        AND timestamp >= datetime('now', '-1 hour')
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+
+    return stmt.all(limit);
+  }
+
+  /**
+   * Get request rate over time
+   *
+   * @param {number} minutes - Time window in minutes
+   * @returns {object} Request counts per minute
+   */
+  getRequestRate(minutes = 60) {
+    const stmt = this.db.prepare(`
+      SELECT
+        strftime('%Y-%m-%d %H:%M', timestamp) as minute,
+        COUNT(*) as requests
+      FROM metrics
+      WHERE event IN ('HTTP_REQUEST', 'HTTP_ENDPOINT')
+        AND timestamp >= datetime('now', '-' || ? || ' minutes')
+      GROUP BY minute
+      ORDER BY minute ASC
+    `);
+
+    const data = stmt.all(minutes);
+
+    return {
+      labels: data.map(d => d.minute),
+      values: data.map(d => d.requests)
+    };
   }
 
   /**
