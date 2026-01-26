@@ -870,4 +870,227 @@ GET /api/metrics/error-budget
 
 ---
 
+## Bootstrap System (Phase 3)
+
+### Manually Trigger Bootstrap
+
+```http
+POST /api/agents/:agentId/bootstrap
+Content-Type: application/json
+
+{
+  "files": ["README.md", "docs/architecture.md"],
+  "additionalContext": "Focus on the authentication module",
+  "variables": {
+    "sprint": "Sprint 23",
+    "priority": "security"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "filesLoaded": ["README.md", "docs/architecture.md"],
+  "contextSize": 4523,
+  "status": "ready",
+  "bootstrapTime": 1.23,
+  "mode": "manual",
+  "duration": 2.34
+}
+```
+
+### Get Bootstrap Status
+
+```http
+GET /api/agents/:agentId/bootstrap/status
+```
+
+**Response:**
+```json
+{
+  "agentId": "Alice",
+  "status": "ready",
+  "lastBootstrap": "2026-01-26T12:30:00Z",
+  "history": [
+    {
+      "mode": "auto",
+      "success": true,
+      "filesLoaded": ["CLAUDE.md", ".kokino/context.md"],
+      "contextSize": 3245,
+      "duration": 1200,
+      "startedAt": "2026-01-26T12:30:00Z",
+      "completedAt": "2026-01-26T12:30:01Z",
+      "error": null
+    }
+  ]
+}
+```
+
+### Reload Bootstrap Context
+
+```http
+POST /api/agents/:agentId/bootstrap/reload
+```
+
+Reloads bootstrap context using the agent's configured bootstrap mode.
+
+**Response:**
+```json
+{
+  "success": true,
+  "mode": "auto",
+  "filesLoaded": ["CLAUDE.md"],
+  "contextSize": 2150,
+  "duration": 0.85
+}
+```
+
+### Update Bootstrap Mode
+
+```http
+PUT /api/agents/:agentId/bootstrap/mode
+Content-Type: application/json
+
+{
+  "mode": "auto",
+  "config": {}
+}
+```
+
+**Valid Modes:**
+- `none` - No bootstrap, system prompt only
+- `auto` - Automatically load CLAUDE.md and .kokino files
+- `manual` - User-triggered via API
+- `custom` - Run custom bootstrap script
+
+**Response:**
+```json
+{
+  "success": true,
+  "agentId": "Alice",
+  "mode": "auto",
+  "message": "Bootstrap mode updated"
+}
+```
+
+### Get Compaction Status
+
+```http
+GET /api/agents/:agentId/compaction-status
+```
+
+**Response:**
+```json
+{
+  "agentId": "Alice",
+  "conversationTurns": 67,
+  "totalTokens": 125000,
+  "errorCount": 3,
+  "avgResponseTime": 2.3,
+  "lastMeasured": "2026-01-26T12:35:00Z",
+  "compactionStatus": {
+    "isCompacted": true,
+    "severity": "warning",
+    "recommendation": "Consider restarting agent soon",
+    "reasons": [
+      "Conversation has 67 turns (warning threshold: 50)",
+      "Total tokens: 125000 (warning threshold: 100000)"
+    ],
+    "metrics": {
+      "conversationTurns": 67,
+      "totalTokens": 125000,
+      "errorCount": 3
+    }
+  }
+}
+```
+
+### Track Conversation Turn
+
+```http
+POST /api/agents/:agentId/compaction/track
+Content-Type: application/json
+
+{
+  "tokens": 1500,
+  "error": false,
+  "responseTime": 2.4,
+  "confusionCount": 0
+}
+```
+
+Automatically called by the broker during agent execution. Used for compaction monitoring.
+
+### Reset Compaction Metrics
+
+```http
+POST /api/agents/:agentId/compaction/reset
+```
+
+Resets compaction metrics after agent restart.
+
+**Response:**
+```json
+{
+  "success": true,
+  "agentId": "Alice",
+  "message": "Compaction metrics reset"
+}
+```
+
+### Get Compaction History
+
+```http
+GET /api/agents/:agentId/compaction/history?limit=20
+```
+
+**Response:**
+```json
+{
+  "agentId": "Alice",
+  "history": [
+    {
+      "conversationTurns": 67,
+      "totalTokens": 125000,
+      "errorCount": 3,
+      "avgResponseTime": 2.3,
+      "measuredAt": "2026-01-26T12:35:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Bootstrap Integration with Agent Startup
+
+When starting an agent via `POST /agents/:agentId/start`, the broker will automatically:
+
+1. Load agent configuration from `agent_configs` table
+2. Determine bootstrap mode (default: `auto`)
+3. Run bootstrap if mode is not `none`
+4. Reset compaction metrics
+5. Load context files based on mode
+6. Execute agent warmup
+
+**Example Start Response with Bootstrap:**
+```json
+{
+  "status": "ready",
+  "sessionId": "alice-session-123",
+  "bootstrapTime": 3245,
+  "bootstrap": {
+    "mode": "auto",
+    "filesLoaded": ["CLAUDE.md", ".kokino/context.md"],
+    "contextSize": 4523,
+    "duration": 1.23
+  },
+  "response": "Hello! I'm ready to assist you."
+}
+```
+
+---
+
 For more information, see the [README](../README.md), [HEADLESS-ROADMAP.md](HEADLESS-ROADMAP.md), or visit the [GitHub repository](https://github.com/yourusername/kokino).

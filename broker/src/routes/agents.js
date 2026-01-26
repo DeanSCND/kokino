@@ -1,8 +1,16 @@
 import { jsonResponse, parseJson } from '../utils/response.js';
 import { execSync } from 'node:child_process';
 import { spawnAgentInTmux, killAgentTmux } from '../utils/spawn-agent.js';
+import { BootstrapManager } from '../bootstrap/BootstrapManager.js';
+import { CompactionMonitor } from '../bootstrap/CompactionMonitor.js';
+import { DEFAULT_BOOTSTRAP_CONFIG } from '../bootstrap/BootstrapModes.js';
+import db from '../db/schema.js';
 
 export function createAgentRoutes(registry, ticketStore, messageRepository = null, agentRunner = null, conversationStore = null, fallbackController = null) {
+  // Initialize bootstrap system (Phase 3)
+  const bootstrapManager = new BootstrapManager(registry);
+  const compactionMonitor = new CompactionMonitor();
+
   return {
     // POST /agents/register
     async register(req, res) {
@@ -227,6 +235,10 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
         if (!record) {
           return jsonResponse(res, 404, { error: 'Agent not found' });
         }
+
+        // Phase 3: Reset compaction metrics on agent restart
+        await compactionMonitor.resetMetrics(agentId);
+
         jsonResponse(res, 200, { status: 'restarting', agent: record });
       } catch (error) {
         console.error(`[agents/${agentId}/restart] Error:`, error);
@@ -311,7 +323,7 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
       }
     },
 
-    // POST /agents/:agentId/start - Bootstrap agent (Issue #110)
+    // POST /agents/:agentId/start - Bootstrap agent (Issue #110 + Phase 3)
     async start(req, res, agentId) {
       try {
         if (!agentRunner) {
@@ -335,6 +347,43 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
         // Update status to 'starting'
         registry.updateStatus(agentId, 'starting');
 
+        // Phase 3: Get agent config and bootstrap configuration
+        let bootstrapConfig = { ...DEFAULT_BOOTSTRAP_CONFIG };
+        const agentRecord = db.prepare('SELECT config_id FROM agents WHERE agent_id = ?').get(agentId);
+
+        if (agentRecord && agentRecord.config_id) {
+          const config = db.prepare('SELECT * FROM agent_configs WHERE id = ?').get(agentRecord.config_id);
+          if (config) {
+            bootstrapConfig = {
+              mode: config.bootstrap_mode || 'auto',
+              autoLoadPaths: DEFAULT_BOOTSTRAP_CONFIG.autoLoadPaths,
+              bootstrapScript: config.bootstrap_script || '',
+              bootstrapTimeout: DEFAULT_BOOTSTRAP_CONFIG.timeout,
+              bootstrapEnv: {}
+            };
+          }
+        }
+
+        // Phase 3: Reset compaction metrics on agent start
+        await compactionMonitor.resetMetrics(agentId);
+
+        // Phase 3: Run bootstrap if mode is not 'none'
+        let bootstrapResult = null;
+        if (bootstrapConfig.mode !== 'none') {
+          try {
+            console.log(`[agents/${agentId}/start] Running bootstrap (mode: ${bootstrapConfig.mode})`);
+            bootstrapResult = await bootstrapManager.bootstrapAgent(agentId, bootstrapConfig);
+          } catch (bootstrapError) {
+            console.error(`[agents/${agentId}/start] Bootstrap failed:`, bootstrapError);
+            registry.updateStatus(agentId, 'error', `Bootstrap failed: ${bootstrapError.message}`);
+            return jsonResponse(res, 500, {
+              error: 'Bootstrap failed',
+              message: bootstrapError.message,
+              mode: bootstrapConfig.mode
+            });
+          }
+        }
+
         // Execute lightweight warmup prompt
         const warmupPrompt = 'You are now online. Respond with a brief greeting confirming you are ready.';
 
@@ -351,6 +400,12 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
             status: 'ready',
             sessionId: result.metadata?.sessionId,
             bootstrapTime: result.durationMs,
+            bootstrap: bootstrapResult ? {
+              mode: bootstrapResult.mode,
+              filesLoaded: bootstrapResult.filesLoaded || [],
+              contextSize: bootstrapResult.contextSize || 0,
+              duration: bootstrapResult.duration || 0
+            } : null,
             response: result.content
           });
         } catch (error) {

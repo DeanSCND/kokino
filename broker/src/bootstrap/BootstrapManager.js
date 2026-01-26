@@ -322,7 +322,7 @@ export class BootstrapManager {
     `);
     stmt.run(
       now,
-      true,
+      1, // SQLite uses 0/1 for booleans
       JSON.stringify(result.filesLoaded || []),
       result.contextSize || 0,
       duration,
@@ -340,7 +340,7 @@ export class BootstrapManager {
       SET completed_at = ?, success = ?, error_message = ?, duration_ms = ?
       WHERE id = ?
     `);
-    stmt.run(now, false, error.message, duration, id);
+    stmt.run(now, 0, error.message, duration, id); // SQLite uses 0/1 for booleans
   }
 
   /**
