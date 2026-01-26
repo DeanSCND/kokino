@@ -11,6 +11,8 @@
 
 import broker from './broker';
 
+// Import broker at top since we fallback to it for unimplemented adapter endpoints
+
 // Feature flag to control transport mode
 const USE_REST_API = import.meta.env.VITE_USE_REST_API === 'true';
 const API_BASE_URL = import.meta.env.VITE_BROKER_URL || 'http://127.0.0.1:5050';
@@ -272,6 +274,44 @@ class RestApiClient {
       body: JSON.stringify({ name: agentName })
     });
     return response.agent;
+  }
+
+  // Bootstrap System (Phase 3) - Fallback to direct broker until adapter endpoints ready
+
+  async bootstrapAgent(agentId, options = {}) {
+    // Fallback to direct broker call for now
+    console.warn('[api-client] bootstrapAgent falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.bootstrapAgent(agentId, options);
+  }
+
+  async getBootstrapStatus(agentId) {
+    // Fallback to direct broker call for now
+    console.warn('[api-client] getBootstrapStatus falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.getBootstrapStatus(agentId);
+  }
+
+  async reloadBootstrap(agentId) {
+    // Fallback to direct broker call for now
+    console.warn('[api-client] reloadBootstrap falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.reloadBootstrap(agentId);
+  }
+
+  async updateBootstrapMode(agentId, mode, config = {}) {
+    // Fallback to direct broker call for now
+    console.warn('[api-client] updateBootstrapMode falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.updateBootstrapMode(agentId, mode, config);
+  }
+
+  async getCompactionStatus(agentId) {
+    // Fallback to direct broker call for now
+    console.warn('[api-client] getCompactionStatus falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.getCompactionStatus(agentId);
+  }
+
+  async resetCompactionMetrics(agentId) {
+    // Fallback to direct broker call for now
+    console.warn('[api-client] resetCompactionMetrics falling back to direct broker - adapter endpoint not yet implemented');
+    return broker.resetCompactionMetrics(agentId);
   }
 
   // System
