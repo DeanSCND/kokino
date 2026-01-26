@@ -21,6 +21,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import apiClient from '../services/api-client';
+import client from '../services/api/client';
 
 export function TeamManager({ projectId = null }) {
   const [teams, setTeams] = useState([]);
@@ -59,13 +60,8 @@ export function TeamManager({ projectId = null }) {
 
   const loadTeams = async () => {
     try {
-      // Use fetch directly since apiClient doesn't have generic REST methods
       const params = new URLSearchParams(projectId ? { projectId, withStatus: 'true' } : { withStatus: 'true' });
-      const response = await fetch(`http://127.0.0.1:5050/api/teams?${params}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await response.json();
+      const data = await client.get(`/api/teams?${params}`);
 
       setTeams(data.teams || []);
 
@@ -85,13 +81,8 @@ export function TeamManager({ projectId = null }) {
 
   const loadAvailableAgents = async () => {
     try {
-      // Use fetch directly since apiClient doesn't have generic REST methods
       const params = new URLSearchParams(projectId ? { projectId } : {});
-      const response = await fetch(`http://127.0.0.1:5050/api/agents?${params}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await response.json();
+      const data = await client.get(`/api/agents?${params}`);
 
       // /api/agents returns { configs: [...] }
       setAvailableAgents(data.configs || []);
@@ -105,11 +96,7 @@ export function TeamManager({ projectId = null }) {
 
     try {
       const statusPromises = teams.map(team =>
-        fetch(`http://127.0.0.1:5050/api/teams/${team.id}/status`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
-        })
-          .then(res => res.json())
+        client.get(`/api/teams/${team.id}/status`)
           .then(status => ({ id: team.id, status }))
           .catch(() => ({ id: team.id, status: { status: 'error' } }))
       );
@@ -148,16 +135,7 @@ export function TeamManager({ projectId = null }) {
         projectId,
       };
 
-      const response = await fetch('http://127.0.0.1:5050/api/teams', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(teamData)
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create team');
-      }
+      const data = await client.post('/api/teams', teamData);
 
       showSuccess(`Team "${data.team.name}" created successfully`);
 
@@ -179,20 +157,11 @@ export function TeamManager({ projectId = null }) {
 
     setLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:5050/api/teams/${editingTeam.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editingTeam.name,
-          description: editingTeam.description,
-          agents: editingTeam.agents,
-        })
+      const data = await client.put(`/api/teams/${editingTeam.id}`, {
+        name: editingTeam.name,
+        description: editingTeam.description,
+        agents: editingTeam.agents,
       });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to update team');
-      }
 
       showSuccess(`Team "${data.team.name}" updated successfully`);
 
@@ -208,15 +177,7 @@ export function TeamManager({ projectId = null }) {
   const startTeam = async (teamId) => {
     setLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to start team');
-      }
+      const data = await client.post(`/api/teams/${teamId}/start`);
 
       showSuccess(data.message);
 
@@ -231,15 +192,7 @@ export function TeamManager({ projectId = null }) {
   const stopTeam = async (teamId) => {
     setLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to stop team');
-      }
+      const data = await client.post(`/api/teams/${teamId}/stop`);
 
       showSuccess(data.message);
 
@@ -258,15 +211,7 @@ export function TeamManager({ projectId = null }) {
 
     setLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to delete team');
-      }
+      await client.delete(`/api/teams/${teamId}`);
 
       showSuccess(`Team "${teamName}" deleted successfully`);
 
@@ -280,15 +225,7 @@ export function TeamManager({ projectId = null }) {
 
   const loadTeamRuns = async (teamId) => {
     try {
-      const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}/runs`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to load team runs');
-      }
+      const data = await client.get(`/api/teams/${teamId}/runs`);
 
       setSelectedTeamRuns(data);
       setRunsDialogOpen(true);
