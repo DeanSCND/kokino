@@ -24,6 +24,7 @@ import { registerMetricsRoutes } from './api/routes/metrics.js';
 import { registerProjectRoutes } from './api/routes/projects.js';
 import { registerAgentConfigRoutes } from './api/routes/agents.js';
 import { registerBootstrapRoutes } from './api/routes/bootstrap.js';
+import { registerTeamRoutes } from './api/routes/teams.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
 const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
@@ -97,7 +98,8 @@ registerMetricsRoutes(apiRouter);
 registerProjectRoutes(apiRouter);
 registerAgentConfigRoutes(apiRouter, { registry });
 registerBootstrapRoutes(apiRouter, { registry });
-console.log('[broker] ✓ API router configured with adapter, metrics, projects, agent config, and bootstrap endpoints');
+registerTeamRoutes(apiRouter, { registry, agentRunner });
+console.log('[broker] ✓ API router configured with adapter, metrics, projects, agent config, bootstrap, and team endpoints');
 
 // Cleanup old tickets every minute
 setInterval(() => {
