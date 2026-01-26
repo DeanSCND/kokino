@@ -4,7 +4,7 @@
  */
 
 import React, { memo } from 'react';
-import { Handle, Position } from 'reactflow';
+import { Handle, Position } from '@xyflow/react';
 import useStore from '../../state/store.js';
 
 const AgentNode = memo(({ id, data, selected }) => {

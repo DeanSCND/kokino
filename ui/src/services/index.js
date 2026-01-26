@@ -13,6 +13,7 @@ export { default as orchestrationService } from './api/orchestrationService.js';
 
 // WebSocket
 export { default as wsConnection } from './websocket/connection.js';
+export { default as websocketService } from './websocket/connection.js';
 
 // Storage
 export { default as teamStorage } from './storage/teamStorage.js';

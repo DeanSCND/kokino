@@ -70,6 +70,7 @@ export const Canvas = ({ setHeaderControls }) => {
 
   const setContextMenu = useStore(state => state.setContextMenu);
   const closeContextMenu = useStore(state => state.closeContextMenu);
+  const toggleAgentLibrary = useStore(state => state.toggleAgentLibrary);
 
   /**
    * Initialize WebSocket connection
@@ -101,18 +102,40 @@ export const Canvas = ({ setHeaderControls }) => {
    * ReactFlow event handlers
    */
   const onNodesChange = useCallback((changes) => {
-    setNodes(nodes => {
-      // Apply changes to nodes (ReactFlow internal)
-      return nodes; // In real implementation, apply changes
+    // Apply ReactFlow internal changes (position, selection, etc.)
+    const updatedNodes = [...nodes];
+    changes.forEach(change => {
+      if (change.type === 'position' && change.position) {
+        const index = updatedNodes.findIndex(n => n.id === change.id);
+        if (index !== -1) {
+          updatedNodes[index] = {
+            ...updatedNodes[index],
+            position: change.position
+          };
+        }
+      } else if (change.type === 'remove') {
+        deleteNode(change.id);
+        return; // Skip setNodes since deleteNode handles it
+      }
     });
-  }, [setNodes]);
+    setNodes(updatedNodes);
+  }, [nodes, setNodes, deleteNode]);
 
   const onEdgesChange = useCallback((changes) => {
-    setEdges(edges => {
-      // Apply changes to edges (ReactFlow internal)
-      return edges; // In real implementation, apply changes
+    // Apply ReactFlow internal changes (selection, removal, etc.)
+    const updatedEdges = [...edges];
+    let shouldUpdate = false;
+    changes.forEach(change => {
+      if (change.type === 'remove') {
+        deleteEdge(change.id);
+      } else {
+        shouldUpdate = true;
+      }
     });
-  }, [setEdges]);
+    if (shouldUpdate) {
+      setEdges(updatedEdges);
+    }
+  }, [edges, setEdges, deleteEdge]);
 
   const onConnect = useCallback((connection) => {
     const newEdge = {
@@ -149,6 +172,20 @@ export const Canvas = ({ setHeaderControls }) => {
     closeContextMenu();
   }, [closeContextMenu]);
 
+  /**
+   * Handler for adding agent from library
+   */
+  const handleAddAgentFromLibrary = useCallback((agentConfig) => {
+    const newNode = {
+      id: agentConfig.id,
+      type: 'agent',
+      position: { x: 100, y: 100 },
+      data: agentConfig
+    };
+    addNode(newNode);
+    toggleAgentLibrary(); // Close library after adding
+  }, [addNode, toggleAgentLibrary]);
+
   return (
     <div className="canvas-container">
       <CanvasControls />
@@ -182,7 +219,12 @@ export const Canvas = ({ setHeaderControls }) => {
       {showTerminalPanel && selectedTerminalAgent && (
         <TerminalModal agent={selectedTerminalAgent} />
       )}
-      {showAgentLibrary && <AgentLibraryPanel />}
+      {showAgentLibrary && (
+        <AgentLibraryPanel
+          onClose={toggleAgentLibrary}
+          onAddAgent={handleAddAgentFromLibrary}
+        />
+      )}
       {showTemplateLibrary && <TemplateLibrary />}
       {showTimeline && <TimelineViewer />}
       {showGitHubIssues && <GitHubIssues />}
