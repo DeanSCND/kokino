@@ -21,6 +21,8 @@ import * as agentService from '../services/api/agentService';
 import * as messageService from '../services/api/messageService';
 import * as configService from '../services/api/configService';
 import * as canvasStorage from '../services/storage/canvasStorage';
+import { useUIStore } from '../stores/useUIStore';
+import { useAgentStore } from '../stores/useAgentStore';
 import { AgentLibraryPanel } from '../components/agents/AgentLibraryPanel';
 import { GitHubIssues } from '../components/GitHubIssues';
 import { CreatePRDialog } from '../components/CreatePRDialog';
@@ -43,22 +45,66 @@ export const Canvas = ({ setHeaderControls }) => {
     const reactFlowWrapper = useRef(null);
     const contextMenuRef = useRef(null);
     const previousFocusRef = useRef(null);
-    const [contextMenu, setContextMenu] = useState(null);
 
-    // Phase 3: Orchestration state
-    const [isOrchestrating, setIsOrchestrating] = useState(false);
-    const [chatMessages, setChatMessages] = useState([]);
+    // Phase 4.2: UI state from Zustand store
+    const {
+        contextMenu,
+        setContextMenu,
+        closeContextMenu: closeContextMenuFromStore,
+        activeView,
+        setActiveView,
+        showChatPanel,
+        showTeamPanel,
+        showAgentLibrary,
+        showTemplateLibrary,
+        showTimeline,
+        showGitHubIssues,
+        showBranchManager,
+        showCommitQueue,
+        showCreatePR,
+        showStageCommit,
+        prAgentName,
+        stageCommitAgent,
+        terminalAgent,
+        chatAgent,
+        setShowChatPanel,
+        setShowTeamPanel,
+        setShowAgentLibrary,
+        setShowTemplateLibrary,
+        setShowTimeline,
+        setShowGitHubIssues,
+        setShowBranchManager,
+        setShowCommitQueue,
+        setShowCreatePR,
+        setShowStageCommit,
+        setTerminalAgent,
+        setChatAgent,
+    } = useUIStore();
 
-    // Phase 4: Dashboard view toggle
-    const [activeView, setActiveView] = useState('chat'); // 'chat' or 'dashboard'
-
-    // Panel visibility toggles
-    const [showChatPanel, setShowChatPanel] = useState(false);
-    const [showTeamPanel, setShowTeamPanel] = useState(false);
+    // Phase 4.2: Agent state from Zustand store
+    const {
+        isOrchestrating,
+        isPaused,
+        stepMode,
+        chatMessages,
+        detectedLoops,
+        isAddingAgent,
+        isLoadingAgents,
+        operationError,
+        setIsOrchestrating,
+        setIsPaused,
+        setStepMode,
+        setChatMessages,
+        addChatMessage,
+        setDetectedLoops,
+        addDetectedLoop,
+        removeDetectedLoop,
+        setIsAddingAgent,
+        setIsLoadingAgents,
+        setOperationError,
+    } = useAgentStore();
 
     // Phase 4: Workflow controls
-    const [isPaused, setIsPaused] = useState(false);
-    const [stepMode, setStepMode] = useState(false);
     const currentStepRef = useRef(0); // Use ref to avoid effect re-triggering
     const advanceStepRef = useRef(false); // Signal to advance to next step
 
@@ -68,44 +114,8 @@ export const Canvas = ({ setHeaderControls }) => {
     // Track seen ticket IDs to avoid duplicates (outside chat state)
     const seenTicketIds = useRef(new Set());
 
-    // Phase 5: Loading states
-    const [isAddingAgent, setIsAddingAgent] = useState(false);
-    const [isLoadingAgents, setIsLoadingAgents] = useState(false);
-    const [operationError, setOperationError] = useState(null);
-
-    // Phase 6: Terminal state
-    const [terminalAgent, setTerminalAgent] = useState(null);
-
-    // Headless: Chat state
-    const [chatAgent, setChatAgent] = useState(null);
-
-    // Phase 7: Template library state
-    const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
-
-    // Phase 8: Timeline viewer state
-    const [showTimeline, setShowTimeline] = useState(false);
-
-    // Phase 9: GitHub issues state
-    const [showGitHubIssues, setShowGitHubIssues] = useState(false);
-
-    // Phase 9: PR creation state
-    const [showCreatePR, setShowCreatePR] = useState(false);
-    const [prAgentName, setPRAgentName] = useState(null);
-
-    // Phase 9: Branch manager state
-    const [showBranchManager, setShowBranchManager] = useState(false);
-
-    // Phase 9: Commit queue state
-    const [showCommitQueue, setShowCommitQueue] = useState(false);
-    const [showStageCommit, setShowStageCommit] = useState(false);
-    const [stageCommitAgent, setStageCommitAgent] = useState(null);
-
-    // Phase 2: Agent Library Panel
-    const [showAgentLibrary, setShowAgentLibrary] = useState(false);
-
     // Phase 8: Loop detection state
     const loopDetectorRef = useRef(null);
-    const [detectedLoops, setDetectedLoops] = useState([]);
 
     // Initialize loop detector
     if (!loopDetectorRef.current) {
@@ -118,7 +128,7 @@ export const Canvas = ({ setHeaderControls }) => {
         // Listen for loop detection events
         loopDetectorRef.current.onLoopDetected((loop) => {
             console.warn('[LoopDetector] Loop detected:', loop);
-            setDetectedLoops(prev => [...prev, loop]);
+            addDetectedLoop(loop);
         });
     }
 
@@ -443,12 +453,12 @@ export const Canvas = ({ setHeaderControls }) => {
     );
 
     const closeContextMenu = useCallback(() => {
-        setContextMenu(null);
+        closeContextMenuFromStore();
         // Return focus to previously focused element
         if (previousFocusRef.current) {
             previousFocusRef.current.focus();
         }
-    }, []);
+    }, [closeContextMenuFromStore]);
 
     const onPaneClick = useCallback(() => closeContextMenu(), [closeContextMenu]);
 
@@ -638,7 +648,7 @@ export const Canvas = ({ setHeaderControls }) => {
     };
 
     const handleDismissLoop = (loopIndex) => {
-        setDetectedLoops(prev => prev.filter((_, i) => i !== loopIndex));
+        removeDetectedLoop(loopIndex);
     };
 
     // Focus management - Move focus into context menu when it opens
