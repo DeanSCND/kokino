@@ -26,6 +26,8 @@ import { registerAgentConfigRoutes } from './api/routes/agents.js';
 import { registerBootstrapRoutes } from './api/routes/bootstrap.js';
 import { registerTeamRoutes } from './api/routes/teams.js';
 import { registerConversationRoutes } from './api/routes/conversations.js';
+import { registerMonitoringRoutes } from './api/routes/monitoring.js';
+import { MonitoringService } from './services/MonitoringService.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
 const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
@@ -60,12 +62,17 @@ const environmentDoctor = new EnvironmentDoctor();
 // Initialize integrity checker
 const integrityChecker = new ConversationIntegrityChecker();
 
+// Initialize monitoring service (Phase 6)
+const monitoringService = new MonitoringService(registry);
+monitoringService.start();
+
 console.log('[broker] ✓ AgentRunner initialized for headless execution');
 console.log('[broker] ✓ FallbackController initialized for runtime degradation');
 console.log('[broker] ✓ ShadowModeController initialized for parallel testing');
 console.log('[broker] ✓ Telemetry & monitoring initialized');
 console.log('[broker] ✓ Environment Doctor initialized');
 console.log('[broker] ✓ Conversation Integrity Checker initialized');
+console.log('[broker] ✓ Monitoring Service initialized and started');
 
 // Run startup health check for claude-code (most common CLI)
 (async () => {
@@ -101,7 +108,8 @@ registerAgentConfigRoutes(apiRouter, { registry });
 registerBootstrapRoutes(apiRouter, { registry });
 registerTeamRoutes(apiRouter, { registry, agentRunner });
 registerConversationRoutes(apiRouter);
-console.log('[broker] ✓ API router configured with adapter, metrics, projects, agent config, bootstrap, team, and conversation endpoints');
+registerMonitoringRoutes(apiRouter, monitoringService);
+console.log('[broker] ✓ API router configured with adapter, metrics, projects, agent config, bootstrap, team, conversation, and monitoring endpoints');
 
 // Cleanup old tickets every minute
 setInterval(() => {
