@@ -6,7 +6,9 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "agent",
@@ -22,6 +24,9 @@
     "node-fetch": "^3.3.2",
     "ws": "^8.18.0",
     "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
   },
   "engines": {
     "node": ">=20.9.0"
