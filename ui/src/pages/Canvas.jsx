@@ -21,6 +21,7 @@ import * as agentService from '../services/api/agentService';
 import * as messageService from '../services/api/messageService';
 import * as configService from '../services/api/configService';
 import * as canvasStorage from '../services/storage/canvasStorage';
+import client from '../services/api/client';
 import { useUIStore } from '../stores/useUIStore';
 import { useAgentStore } from '../stores/useAgentStore';
 import { AgentLibraryPanel } from '../components/agents/AgentLibraryPanel';
@@ -757,8 +758,7 @@ export const Canvas = ({ setHeaderControls }) => {
 
                 try {
                     // Fetch agent configs to get their IDs
-                    const agentConfigsResponse = await fetch('http://127.0.0.1:5050/api/agents');
-                    const allConfigs = await agentConfigsResponse.json();
+                    const allConfigs = await client.get('/api/agents');
 
                     // Map agent names to config IDs
                     const agentConfigIds = agentNames.map(name => {
@@ -773,41 +773,28 @@ export const Canvas = ({ setHeaderControls }) => {
                     const teamName = `Canvas-${Date.now()}`;
                     console.log(`[orchestration] Creating team: ${teamName}`);
 
-                    const createResponse = await fetch('http://127.0.0.1:5050/api/teams', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: teamName,
-                            description: 'Ephemeral team created by Canvas orchestration',
-                            agents: agentConfigIds
-                        })
+                    const { team } = await client.post('/api/teams', {
+                        name: teamName,
+                        description: 'Ephemeral team created by Canvas orchestration',
+                        agents: agentConfigIds
                     });
-
-                    if (!createResponse.ok) {
-                        const error = await createResponse.json();
-                        throw new Error(error.error || 'Failed to create team');
-                    }
-
-                    const { team } = await createResponse.json();
                     console.log(`[orchestration] ✓ Team created: ${team.id}`);
 
                     // Start the team
                     console.log(`[orchestration] Starting team...`);
-                    const startResponse = await fetch(`http://127.0.0.1:5050/api/teams/${team.id}/start`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-
-                    if (!startResponse.ok) {
-                        const error = await startResponse.json();
-                        throw new Error(error.error || 'Failed to start team');
-                    }
-
-                    const startResult = await startResponse.json();
+                    const startResult = await client.post(`/api/teams/${team.id}/start`);
                     console.log(`[orchestration] ✓ Team started: ${startResult.agentCount} agents running`);
 
                     // Store team ID for cleanup
                     window.__currentTeamId = team.id;
+
+                    // Create mapping of config names to runtime agent IDs
+                    // startResult.agents contains: [{ id: "Architect-run-1234", name: "Architect", ... }]
+                    window.__agentIdMapping = {};
+                    startResult.agents.forEach(agent => {
+                        window.__agentIdMapping[agent.name] = agent.id;
+                    });
+                    console.log(`[orchestration] Agent ID mapping:`, window.__agentIdMapping);
 
                 } catch (error) {
                     console.error(`[orchestration] ✗ Team startup failed:`, error.message);
@@ -867,12 +854,17 @@ export const Canvas = ({ setHeaderControls }) => {
                     }
 
                     try {
-                        const result = await messageService.sendMessage(msg.to, {
+                        // Map config name to runtime agent ID if team-based orchestration
+                        const targetAgentId = window.__agentIdMapping
+                            ? (window.__agentIdMapping[msg.to] || msg.to)
+                            : msg.to;
+
+                        const result = await messageService.sendMessage(targetAgentId, {
                             payload: msg.content,
                             metadata: { origin: msg.from, timestamp: Date.now() }
                         });
 
-                        console.log(`[orchestration] Sent message ${result.ticketId}: ${msg.from} → ${msg.to}`);
+                        console.log(`[orchestration] Sent message ${result.ticketId}: ${msg.from} → ${msg.to} (runtime ID: ${targetAgentId})`);
 
                         // Add to chat display
                         addChatMessage({ ...msg, timestamp: Date.now(), ticketId: result.ticketId });
@@ -922,18 +914,22 @@ export const Canvas = ({ setHeaderControls }) => {
                 }
             }
 
-            // Orchestration complete - cleanup team if it was created
+            // Orchestration complete - cleanup ephemeral team if it was created
             if (window.__currentTeamId && agentNames.length >= 2) {
-                console.log(`[orchestration] Stopping team ${window.__currentTeamId}...`);
+                console.log(`[orchestration] Stopping ephemeral team ${window.__currentTeamId}...`);
                 try {
-                    await fetch(`http://127.0.0.1:5050/api/teams/${window.__currentTeamId}/stop`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
+                    await client.post(`/api/teams/${window.__currentTeamId}/stop`);
                     console.log(`[orchestration] ✓ Team stopped`);
+
+                    // Delete the ephemeral team since it was only created for this orchestration
+                    console.log(`[orchestration] Deleting ephemeral team ${window.__currentTeamId}...`);
+                    await client.delete(`/api/teams/${window.__currentTeamId}`);
+                    console.log(`[orchestration] ✓ Ephemeral team deleted`);
+
                     window.__currentTeamId = null;
+                    window.__agentIdMapping = null;
                 } catch (error) {
-                    console.error(`[orchestration] Failed to stop team:`, error.message);
+                    console.error(`[orchestration] Failed to cleanup team:`, error.message);
                 }
             }
 
@@ -946,13 +942,13 @@ export const Canvas = ({ setHeaderControls }) => {
 
         // Cleanup on unmount or stop
         return () => {
-            // Stop team if orchestration is interrupted
+            // Stop and delete ephemeral team if orchestration is interrupted
             if (window.__currentTeamId) {
-                fetch(`http://127.0.0.1:5050/api/teams/${window.__currentTeamId}/stop`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                }).catch(err => console.error('[orchestration] Cleanup failed:', err));
+                client.post(`/api/teams/${window.__currentTeamId}/stop`)
+                    .then(() => client.delete(`/api/teams/${window.__currentTeamId}`))
+                    .catch(err => console.error('[orchestration] Cleanup failed:', err));
                 window.__currentTeamId = null;
+                window.__agentIdMapping = null;
             }
         };
     }, [isOrchestrating, nodes, edges, isPaused, stepMode, setChatMessages, setNodes]);

@@ -18,32 +18,14 @@ class TeamService {
       throw new Error(`Invalid team: ${validated.errors.join(', ')}`);
     }
 
-    const response = await fetch('http://127.0.0.1:5050/api/teams', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(teamData)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create team');
-    }
-
-    return response.json();
+    return client.post('/api/teams', teamData);
   }
 
   /**
    * Load team configuration by ID
    */
   async load(teamId) {
-    const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}`);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to load team');
-    }
-
-    return response.json();
+    return client.get(`/api/teams/${teamId}`);
   }
 
   /**
@@ -51,48 +33,21 @@ class TeamService {
    */
   async list(filters = {}) {
     const params = new URLSearchParams(filters);
-    const response = await fetch(`http://127.0.0.1:5050/api/teams?${params}`);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to list teams');
-    }
-
-    return response.json();
+    return client.get(`/api/teams?${params}`);
   }
 
   /**
    * Update existing team
    */
   async update(teamId, updates) {
-    const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to update team');
-    }
-
-    return response.json();
+    return client.put(`/api/teams/${teamId}`, updates);
   }
 
   /**
    * Delete team
    */
   async delete(teamId) {
-    const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}`, {
-      method: 'DELETE'
-    });
-
-    if (!response.ok && response.status !== 204) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to delete team');
-    }
-
-    return null;
+    return client.delete(`/api/teams/${teamId}`);
   }
 
   /**
@@ -125,7 +80,7 @@ class TeamService {
       ? JSON.parse(jsonData)
       : jsonData;
 
-    return this.save(teamData);
+    return this.create(teamData);
   }
 
   /**
@@ -167,7 +122,7 @@ class TeamService {
       createdAt: new Date().toISOString()
     };
 
-    return this.save(cloned);
+    return this.create(cloned);
   }
 }
 
