@@ -171,11 +171,11 @@ export const Canvas = ({ setHeaderControls }) => {
             console.warn('[GraphEnforcer] Communication violation:', violation);
 
             // Show violation in chat
-            setChatMessages(prev => [...prev, {
+            addChatMessage({
                 from: 'System',
                 content: `⚠️ Communication blocked: ${violation.from} cannot send to ${violation.to}. ${violation.reason}`,
                 timestamp: violation.timestamp
-            }]);
+            });
         });
     }
 
@@ -640,11 +640,11 @@ export const Canvas = ({ setHeaderControls }) => {
         setDetectedLoops([]);
 
         // Notify user
-        setChatMessages(prev => [...prev, {
+        addChatMessage({
             from: 'System',
             content: `⚠️ Loop detected and broken: ${loop.pattern.join(' → ')}`,
             timestamp: Date.now()
-        }]);
+        });
     };
 
     const handleDismissLoop = (loopIndex) => {
@@ -808,7 +808,7 @@ export const Canvas = ({ setHeaderControls }) => {
                         console.log(`[orchestration] Sent message ${result.ticketId}: ${msg.from} → ${msg.to}`);
 
                         // Add to chat display
-                        setChatMessages(prev => [...prev, { ...msg, timestamp: Date.now(), ticketId: result.ticketId }]);
+                        addChatMessage({ ...msg, timestamp: Date.now(), ticketId: result.ticketId });
 
                         // Phase 8: Track message for loop detection
                         if (loopDetectorRef.current) {
@@ -846,7 +846,7 @@ export const Canvas = ({ setHeaderControls }) => {
                     }
                 } else {
                     // Broadcast message
-                    setChatMessages(prev => [...prev, { ...msg, timestamp: Date.now() }]);
+                    addChatMessage({ ...msg, timestamp: Date.now() });
                 }
 
                 // Simulate realistic timing between messages (skip in step mode)
@@ -918,14 +918,14 @@ export const Canvas = ({ setHeaderControls }) => {
                             if (!seenTicketIds.current.has(ticket.ticketId)) {
                                 seenTicketIds.current.add(ticket.ticketId);
 
-                                setChatMessages(prev => [...prev, {
+                                addChatMessage({
                                     from: ticket.originAgent,
                                     to: agentName,
                                     content: ticket.payload,
                                     timestamp: new Date(ticket.createdAt).getTime(),
                                     ticketId: ticket.ticketId,
                                     status: ticket.status
-                                }]);
+                                });
                             }
                         }
                     }
@@ -967,10 +967,7 @@ export const Canvas = ({ setHeaderControls }) => {
         const interval = setInterval(() => {
             // Add chat message
             if (messageIndex < mockConversations.length) {
-                setChatMessages((prev) => [
-                    ...prev,
-                    { ...mockConversations[messageIndex], timestamp: Date.now() }
-                ]);
+                addChatMessage({ ...mockConversations[messageIndex], timestamp: Date.now() });
                 messageIndex++;
             }
 
@@ -1358,8 +1355,7 @@ export const Canvas = ({ setHeaderControls }) => {
                                 <div className="border-t border-zinc-800 my-1"></div>
                                 <button
                                     onClick={() => {
-                                        setStageCommitAgent(contextMenu.data.name);
-                                        setShowStageCommit(true);
+                                        setShowStageCommit(true, contextMenu.data.name);
                                         closeContextMenu();
                                     }}
                                     className="w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-zinc-800 transition-colors flex items-center gap-2"
@@ -1370,8 +1366,7 @@ export const Canvas = ({ setHeaderControls }) => {
                                 </button>
                                 <button
                                     onClick={() => {
-                                        setPRAgentName(contextMenu.data.name);
-                                        setShowCreatePR(true);
+                                        setShowCreatePR(true, contextMenu.data.name);
                                         closeContextMenu();
                                     }}
                                     className="w-full text-left px-4 py-2 text-sm text-accent-purple hover:bg-zinc-800 transition-colors flex items-center gap-2"
@@ -1491,11 +1486,11 @@ export const Canvas = ({ setHeaderControls }) => {
                             await statusSync.updateIssueLabel('in-progress');
 
                             // Add system message to chat
-                            setChatMessages(prev => [...prev, {
+                            addChatMessage({
                                 from: 'System',
                                 content: `🚀 Spawned team for GitHub issue #${issue.number}: "${issue.title}" (status sync enabled)`,
                                 timestamp: Date.now()
-                            }]);
+                            });
                         }}
                     />
                 )}
@@ -1504,8 +1499,7 @@ export const Canvas = ({ setHeaderControls }) => {
                 {showCreatePR && (
                     <CreatePRDialog
                         onClose={() => {
-                            setShowCreatePR(false);
-                            setPRAgentName(null);
+                            setShowCreatePR(false, null);
                         }}
                         agentName={prAgentName}
                     />
@@ -1529,8 +1523,7 @@ export const Canvas = ({ setHeaderControls }) => {
                 {showStageCommit && (
                     <StageCommitDialog
                         onClose={() => {
-                            setShowStageCommit(false);
-                            setStageCommitAgent(null);
+                            setShowStageCommit(false, null);
                         }}
                         agentName={stageCommitAgent}
                     />
