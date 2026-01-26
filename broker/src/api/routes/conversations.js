@@ -8,6 +8,7 @@
 import { ConversationLogReader } from '../../services/ConversationLogReader.js';
 import { Team } from '../../models/Team.js';
 import { jsonResponse } from '../../utils/response.js';
+import db from '../../db/schema.js';
 
 /**
  * Register conversation routes on the API router
@@ -83,6 +84,7 @@ export function registerConversationRoutes(router) {
    * Get merged conversation log for all agents in a team
    *
    * Query params:
+   * - runId: Specific run ID (optional, defaults to most recent)
    * - offset: Starting index (default: 0)
    * - limit: Max entries to return (default: 100)
    * - includeSystem: Include system messages (default: false)
@@ -90,6 +92,7 @@ export function registerConversationRoutes(router) {
   router.get('/conversations/team/:teamId', async (req, res) => {
     try {
       const { teamId } = req.params;
+      const { runId } = req.query;
       const offset = parseInt(req.query.offset) || 0;
       const limit = parseInt(req.query.limit) || 100;
       const includeSystem = req.query.includeSystem === 'true';
@@ -100,11 +103,20 @@ export function registerConversationRoutes(router) {
         return jsonResponse(res, 404, { error: 'Team not found' });
       }
 
-      // Get agent configs to extract agent names
-      const configs = team.getAgentConfigs();
-      const agentIds = configs.map(c => c.name);
+      // Get the team run to find actual runtime agent IDs
+      const run = runId
+        ? db.prepare('SELECT * FROM team_runs WHERE id = ?').get(runId)
+        : db.prepare('SELECT * FROM team_runs WHERE team_id = ? ORDER BY started_at DESC LIMIT 1').get(teamId);
 
-      // Read and merge conversations
+      if (!run) {
+        return jsonResponse(res, 404, { error: 'No runs found for this team' });
+      }
+
+      // Extract actual agent IDs from run (format: "AgentName-runprefix": "headless")
+      const agentPids = JSON.parse(run.agent_pids || '{}');
+      const agentIds = Object.keys(agentPids);
+
+      // Read and merge conversations using runtime agent IDs
       const conversation = await ConversationLogReader.readTeamConversation(agentIds, {
         offset,
         limit,
@@ -114,6 +126,7 @@ export function registerConversationRoutes(router) {
       jsonResponse(res, 200, {
         teamId,
         teamName: team.name,
+        runId: run.id,
         agents: agentIds,
         entries: conversation,
         count: conversation.length,
@@ -128,10 +141,14 @@ export function registerConversationRoutes(router) {
   /**
    * GET /api/conversations/team/:teamId/summary
    * Get summary statistics for a team's conversation
+   *
+   * Query params:
+   * - runId: Specific run ID (optional, defaults to most recent)
    */
   router.get('/conversations/team/:teamId/summary', async (req, res) => {
     try {
       const { teamId } = req.params;
+      const { runId } = req.query;
 
       // Get team configuration
       const team = Team.findById(teamId);
@@ -139,11 +156,20 @@ export function registerConversationRoutes(router) {
         return jsonResponse(res, 404, { error: 'Team not found' });
       }
 
-      // Get agent configs
-      const configs = team.getAgentConfigs();
-      const agentIds = configs.map(c => c.name);
+      // Get the team run to find actual runtime agent IDs
+      const run = runId
+        ? db.prepare('SELECT * FROM team_runs WHERE id = ?').get(runId)
+        : db.prepare('SELECT * FROM team_runs WHERE team_id = ? ORDER BY started_at DESC LIMIT 1').get(teamId);
 
-      // Get stats for each agent
+      if (!run) {
+        return jsonResponse(res, 404, { error: 'No runs found for this team' });
+      }
+
+      // Extract actual agent IDs from run
+      const agentPids = JSON.parse(run.agent_pids || '{}');
+      const agentIds = Object.keys(agentPids);
+
+      // Get stats for each agent using runtime IDs
       const agentStats = await Promise.all(
         agentIds.map(async (agentId) => {
           const stats = await ConversationLogReader.getStats(agentId);
@@ -158,6 +184,7 @@ export function registerConversationRoutes(router) {
       jsonResponse(res, 200, {
         teamId,
         teamName: team.name,
+        runId: run.id,
         agents: agentStats,
         summary: {
           totalMessages,
