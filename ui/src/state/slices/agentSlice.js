@@ -23,6 +23,11 @@ export const createAgentSlice = (set, get) => ({
     edges: state.edges.filter(e => e.source !== nodeId && e.target !== nodeId)
   })),
 
+  deleteNode: (nodeId) => set((state) => ({
+    nodes: state.nodes.filter(n => n.id !== nodeId),
+    edges: state.edges.filter(e => e.source !== nodeId && e.target !== nodeId)
+  })),
+
   updateNode: (nodeId, updates) => set((state) => ({
     nodes: state.nodes.map(n =>
       n.id === nodeId ? { ...n, ...updates } : n
@@ -34,6 +39,10 @@ export const createAgentSlice = (set, get) => ({
   })),
 
   removeEdge: (edgeId) => set((state) => ({
+    edges: state.edges.filter(e => e.id !== edgeId)
+  })),
+
+  deleteEdge: (edgeId) => set((state) => ({
     edges: state.edges.filter(e => e.id !== edgeId)
   })),
 
