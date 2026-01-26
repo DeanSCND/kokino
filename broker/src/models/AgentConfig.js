@@ -3,6 +3,13 @@
  *
  * Manages agent templates and configurations for Phase 2.
  * Replaces hardcoded agent definitions with dynamic database-backed configs.
+ *
+ * Supports:
+ * - Global agents (projectId = null) - shared across all projects
+ * - Project-specific agents (projectId = 'project-name')
+ * - CLI types: 'claude-code' (working), 'factory-droid' (planned), 'gemini' (planned)
+ * - Bootstrap modes: none, auto, manual, custom
+ * - Capabilities field is stored but not currently used (reserved for future)
  */
 
 import { randomUUID } from 'node:crypto';
@@ -11,7 +18,7 @@ import db from '../db/schema.js';
 export class AgentConfig {
   constructor(data) {
     this.id = data.id || randomUUID();
-    this.projectId = data.projectId || 'default';
+    this.projectId = data.projectId !== undefined ? data.projectId : 'default'; // null = global agent
     this.name = data.name;
     this.role = data.role;
     this.cliType = data.cliType || 'claude-code';
@@ -19,7 +26,7 @@ export class AgentConfig {
     this.workingDirectory = data.workingDirectory || '.';
     this.bootstrapMode = data.bootstrapMode || 'auto';
     this.bootstrapScript = data.bootstrapScript || '';
-    this.capabilities = data.capabilities || [];
+    this.capabilities = data.capabilities || []; // Reserved for future use
     this.metadata = data.metadata || {};
     this.createdAt = data.createdAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
@@ -33,12 +40,13 @@ export class AgentConfig {
 
     if (!this.name) errors.push('Name is required');
     if (!this.role) errors.push('Role is required');
-    if (!this.projectId) errors.push('Project ID is required');
+    // projectId can be null for global agents, but not undefined
+    if (this.projectId === undefined) errors.push('Project ID must be specified (use null for global agents)');
     if (!['claude-code', 'factory-droid', 'gemini'].includes(this.cliType)) {
-      errors.push('Invalid CLI type');
+      errors.push(`Invalid CLI type: ${this.cliType}. Must be 'claude-code', 'factory-droid', or 'gemini'`);
     }
     if (!['none', 'auto', 'manual', 'custom'].includes(this.bootstrapMode)) {
-      errors.push('Invalid bootstrap mode');
+      errors.push(`Invalid bootstrap mode: ${this.bootstrapMode}. Must be 'none', 'auto', 'manual', or 'custom'`);
     }
 
     return errors;
@@ -153,11 +161,17 @@ export class AgentConfig {
   }
 
   /**
-   * Find all configs for a project
+   * Find all configs for a project (or global if projectId is null)
    */
   static findByProject(projectId) {
-    const rows = db.prepare('SELECT * FROM agent_configs WHERE project_id = ? ORDER BY role, name')
-      .all(projectId);
+    const query = projectId === null
+      ? 'SELECT * FROM agent_configs WHERE project_id IS NULL ORDER BY role, name'
+      : 'SELECT * FROM agent_configs WHERE project_id = ? ORDER BY role, name';
+
+    const rows = projectId === null
+      ? db.prepare(query).all()
+      : db.prepare(query).all(projectId);
+
     return rows.map(row => AgentConfig.fromDatabase(row));
   }
 
@@ -199,14 +213,27 @@ export class AgentConfig {
 
   /**
    * List all agent configurations
+   * @param {string|null} projectId - Filter by project ID. Pass null for global agents, string for project-specific
+   * @param {boolean} includeGlobal - If projectId is specified, also include global agents
    */
-  static listAll(projectId = null) {
-    let query = 'SELECT * FROM agent_configs';
+  static listAll(projectId = null, includeGlobal = false) {
+    let query;
     const params = [];
 
-    if (projectId) {
-      query += ' WHERE project_id = ?';
+    if (projectId === null) {
+      // Only global agents
+      query = 'SELECT * FROM agent_configs WHERE project_id IS NULL';
+    } else if (includeGlobal) {
+      // Project-specific AND global agents
+      query = 'SELECT * FROM agent_configs WHERE project_id = ? OR project_id IS NULL';
       params.push(projectId);
+    } else if (projectId) {
+      // Only project-specific agents
+      query = 'SELECT * FROM agent_configs WHERE project_id = ?';
+      params.push(projectId);
+    } else {
+      // All agents
+      query = 'SELECT * FROM agent_configs';
     }
 
     query += ' ORDER BY role, name';

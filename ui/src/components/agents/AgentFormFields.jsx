@@ -4,13 +4,7 @@ import React from 'react';
  * Shared form fields for agent configuration
  * Used by both CreateAgentDialog and EditAgentDialog
  */
-export const AgentFormFields = ({ formData, errors, onChange, onCheckboxChange }) => {
-  const CLI_TYPES = [
-    { value: 'claude-code', label: 'Claude Code' },
-    { value: 'codex', label: 'Codex' },
-    { value: 'generic', label: 'Generic' }
-  ];
-
+export const AgentFormFields = ({ formData, errors, onChange, onCheckboxChange, projects = [], scope, onScopeChange }) => {
   const BOOTSTRAP_MODES = [
     { value: 'auto', label: 'Auto' },
     { value: 'manual', label: 'Manual' },
@@ -63,17 +57,52 @@ export const AgentFormFields = ({ formData, errors, onChange, onCheckboxChange }
           </div>
 
           <div>
-            <label className="block text-xs text-text-secondary mb-1">
-              Project <span className="text-red-500">*</span>
+            <label className="block text-xs text-text-secondary mb-2">
+              Scope <span className="text-red-500">*</span>
             </label>
-            <input
-              type="text"
-              name="projectId"
-              value={formData.projectId}
-              onChange={onChange}
-              placeholder="default"
-              className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent-purple focus:outline-none"
-            />
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="scope"
+                  value="global"
+                  checked={scope === 'global'}
+                  onChange={onScopeChange}
+                  className="text-accent-purple focus:ring-accent-purple"
+                />
+                <span className="text-sm text-text-primary">Global Agent (all projects)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="scope"
+                  value="project-specific"
+                  checked={scope === 'project-specific'}
+                  onChange={onScopeChange}
+                  className="text-accent-purple focus:ring-accent-purple"
+                />
+                <span className="text-sm text-text-primary">Project-specific</span>
+              </label>
+
+              {scope === 'project-specific' && (
+                <div className="ml-6 mt-2">
+                  <label className="block text-xs text-text-secondary mb-1">Project</label>
+                  <select
+                    name="projectId"
+                    value={formData.projectId || ''}
+                    onChange={onChange}
+                    className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:border-accent-purple focus:outline-none"
+                  >
+                    <option value="">Select project...</option>
+                    {projects.map(project => (
+                      <option key={project.id} value={project.id}>
+                        {project.name || project.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
             {errors.projectId && <p className="text-xs text-red-400 mt-1">{errors.projectId}</p>}
           </div>
         </div>
@@ -84,21 +113,10 @@ export const AgentFormFields = ({ formData, errors, onChange, onCheckboxChange }
         <h3 className="text-sm font-semibold text-text-primary mb-3">CLI Configuration</h3>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-text-secondary mb-2">CLI Type</label>
-            <div className="space-y-2">
-              {CLI_TYPES.map(type => (
-                <label key={type.value} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="cliType"
-                    value={type.value}
-                    checked={formData.cliType === type.value}
-                    onChange={onChange}
-                    className="text-accent-purple focus:ring-accent-purple"
-                  />
-                  <span className="text-sm text-text-primary">{type.label}</span>
-                </label>
-              ))}
+            <label className="block text-xs text-text-secondary mb-1">CLI Type</label>
+            <div className="bg-surface border border-border rounded px-3 py-2">
+              <p className="text-sm text-text-primary">Claude Code</p>
+              <p className="text-xs text-text-secondary mt-1">(Factory Droid & Gemini coming soon)</p>
             </div>
           </div>
 
@@ -167,7 +185,9 @@ export const AgentFormFields = ({ formData, errors, onChange, onCheckboxChange }
 
       {/* Capabilities */}
       <div>
-        <h3 className="text-sm font-semibold text-text-primary mb-3">Capabilities</h3>
+        <h3 className="text-sm font-semibold text-text-primary mb-3">
+          Capabilities <span className="text-xs text-text-secondary font-normal">(Reserved for future use)</span>
+        </h3>
         <div className="grid grid-cols-3 gap-3">
           {CAPABILITIES.map(cap => (
             <label key={cap.value} className="flex items-center gap-2 cursor-pointer">

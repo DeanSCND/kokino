@@ -20,9 +20,15 @@ export function createAgentConfigRoutes(registry) {
     listAgents: (req, res) => {
       try {
         const url = new URL(req.url, `http://${req.headers.host}`);
-        const projectId = url.searchParams.get('project_id');
+        let projectId = url.searchParams.get('projectId') || url.searchParams.get('project_id');
         const role = url.searchParams.get('role');
         const capability = url.searchParams.get('capability');
+        const includeGlobal = url.searchParams.get('includeGlobal') === 'true';
+
+        // Convert string 'null' to actual null for global agents
+        if (projectId === 'null') {
+          projectId = null;
+        }
 
         let configs;
 
@@ -31,7 +37,7 @@ export function createAgentConfigRoutes(registry) {
         } else if (role) {
           configs = AgentConfig.findByRole(role, projectId);
         } else {
-          configs = AgentConfig.listAll(projectId);
+          configs = AgentConfig.listAll(projectId, includeGlobal);
         }
 
         const response = configs.map(config => config.toJSON());
@@ -52,8 +58,9 @@ export function createAgentConfigRoutes(registry) {
         const data = req.body || {};
 
         // Create and validate new config
+        // Note: projectId can be null for global agents
         const config = new AgentConfig({
-          projectId: data.projectId || 'default',
+          projectId: data.projectId !== undefined ? data.projectId : 'default',
           name: data.name,
           role: data.role,
           cliType: data.cliType || 'claude-code',
@@ -122,9 +129,10 @@ export function createAgentConfigRoutes(registry) {
           return jsonResponse(res, 404, { error: 'Agent configuration not found' });
         }
 
-        // Update fields
+        // Update fields (projectId can be null for global agents)
         if (data.name !== undefined) config.name = data.name;
         if (data.role !== undefined) config.role = data.role;
+        if (data.projectId !== undefined) config.projectId = data.projectId;
         if (data.cliType !== undefined) config.cliType = data.cliType;
         if (data.systemPrompt !== undefined) config.systemPrompt = data.systemPrompt;
         if (data.workingDirectory !== undefined) config.workingDirectory = data.workingDirectory;
