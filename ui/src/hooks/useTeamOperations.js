@@ -89,22 +89,47 @@ export default function useTeamOperations() {
 
   /**
    * Export team as JSON
+   * NOTE: Uses localStorage directly (backend not implemented)
    */
   const exportTeam = useCallback(async (teamId) => {
-    return teamService.export(teamId);
+    try {
+      const team = teamStorage.load(teamId);
+      return JSON.stringify(team, null, 2);
+    } catch (error) {
+      console.error('Failed to export team:', error);
+      throw error;
+    }
   }, []);
 
   /**
    * Import team from JSON
+   * NOTE: Uses localStorage directly (backend not implemented)
    */
   const importTeam = useCallback(async (jsonData) => {
-    const team = await teamService.import(jsonData);
+    try {
+      const teamData = typeof jsonData === 'string'
+        ? JSON.parse(jsonData)
+        : jsonData;
 
-    setTeamData(team);
-    setNodes(team.nodes || []);
-    setEdges(team.edges || []);
+      // Validate before importing
+      const validation = teamService.validate(teamData);
+      if (!validation.valid) {
+        throw new Error(`Invalid team: ${validation.errors.join(', ')}`);
+      }
 
-    return team;
+      // Save to localStorage
+      const imported = teamStorage.save(teamData);
+
+      // Update store
+      setTeamData(imported);
+      setNodes(imported.nodes || []);
+      setEdges(imported.edges || []);
+
+      return imported;
+    } catch (error) {
+      console.error('Failed to import team:', error);
+      throw error;
+    }
   }, [setTeamData, setNodes, setEdges]);
 
   return {
