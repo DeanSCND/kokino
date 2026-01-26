@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { User, Activity, PauseCircle, WifiOff, AlertTriangle, Clock, XCircle, HelpCircle, Trash2 } from 'lucide-react';
+import { User, Activity, PauseCircle, WifiOff, AlertTriangle, Clock, XCircle, HelpCircle, Trash2, RefreshCw, CheckCircle, FileText } from 'lucide-react';
+import broker from '../services/broker';
 
 // Status styling map - from POC ui-observatory/src/components/AgentNode.jsx:6-11
 // Proven visual states with dual-cue system (color + icon)
@@ -45,14 +46,40 @@ const escalationStyles = {
 };
 
 export const AgentNode = ({ data, id }) => {
-    const { role, name, status = 'idle', task, escalation, onDelete } = data;
+    const { role, name, status = 'idle', task, escalation, onDelete, agentId } = data;
     const style = statusStyles[status] || statusStyles.idle;
     const StatusIcon = style.icon;
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [bootstrapStatus, setBootstrapStatus] = useState(null);
+    const [compactionStatus, setCompactionStatus] = useState(null);
+    const [isReloading, setIsReloading] = useState(false);
 
     // Phase 8: Escalation state
     const escalationState = escalation ? escalationStyles[escalation.type] : null;
     const EscalationIcon = escalationState?.icon;
+
+    // Phase 3: Fetch bootstrap and compaction status
+    useEffect(() => {
+        if (!agentId) return;
+
+        const fetchStatus = async () => {
+            try {
+                const [bootstrap, compaction] = await Promise.all([
+                    broker.getBootstrapStatus(agentId).catch(() => null),
+                    broker.getCompactionStatus(agentId).catch(() => null)
+                ]);
+                setBootstrapStatus(bootstrap);
+                setCompactionStatus(compaction);
+            } catch (error) {
+                console.error('[AgentNode] Failed to fetch status:', error);
+            }
+        };
+
+        fetchStatus();
+        // Refresh every 30 seconds
+        const interval = setInterval(fetchStatus, 30000);
+        return () => clearInterval(interval);
+    }, [agentId]);
 
     const handleDeleteClick = (e) => {
         e.stopPropagation();
@@ -70,6 +97,27 @@ export const AgentNode = ({ data, id }) => {
     const handleCancelDelete = (e) => {
         e.stopPropagation();
         setShowDeleteConfirm(false);
+    };
+
+    const handleReloadContext = async (e) => {
+        e.stopPropagation();
+        if (!agentId) return;
+
+        setIsReloading(true);
+        try {
+            await broker.reloadBootstrap(agentId);
+            // Refresh status immediately after reload
+            const [bootstrap, compaction] = await Promise.all([
+                broker.getBootstrapStatus(agentId).catch(() => null),
+                broker.getCompactionStatus(agentId).catch(() => null)
+            ]);
+            setBootstrapStatus(bootstrap);
+            setCompactionStatus(compaction);
+        } catch (error) {
+            console.error('[AgentNode] Failed to reload bootstrap:', error);
+        } finally {
+            setIsReloading(false);
+        }
     };
 
     return (
@@ -117,11 +165,69 @@ export const AgentNode = ({ data, id }) => {
             </div>
 
             {/* Body - Current task display */}
-            <div className="p-4">
-                <p className="text-xs text-text-muted mb-1 uppercase tracking-wider">Current Task</p>
-                <div className="text-sm text-text-primary line-clamp-2">
-                    {task || "Awaiting task..."}
+            <div className="p-4 space-y-3">
+                <div>
+                    <p className="text-xs text-text-muted mb-1 uppercase tracking-wider">Current Task</p>
+                    <div className="text-sm text-text-primary line-clamp-2">
+                        {task || "Awaiting task..."}
+                    </div>
                 </div>
+
+                {/* Phase 3: Bootstrap & Compaction Status */}
+                {agentId && (
+                    <div className="pt-2 border-t border-border space-y-2">
+                        {/* Bootstrap Status */}
+                        {bootstrapStatus && (
+                            <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-1.5">
+                                    <FileText size={12} className="text-text-secondary" />
+                                    <span className="text-text-secondary">
+                                        Context: {bootstrapStatus.history?.[0]?.filesLoaded?.length || 0} files
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={handleReloadContext}
+                                    disabled={isReloading}
+                                    className="flex items-center gap-1 px-2 py-1 rounded hover:bg-surface-hover text-text-secondary hover:text-accent-purple transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Reload context"
+                                >
+                                    <RefreshCw size={12} className={isReloading ? 'animate-spin' : ''} />
+                                    <span>Reload</span>
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Compaction Status */}
+                        {compactionStatus && compactionStatus.conversationTurns > 0 && (
+                            <div className="flex items-center gap-1.5 text-xs">
+                                {compactionStatus.compactionStatus.severity === 'normal' && (
+                                    <>
+                                        <CheckCircle size={12} className="text-accent-green" />
+                                        <span className="text-text-secondary">
+                                            {compactionStatus.conversationTurns} turns
+                                        </span>
+                                    </>
+                                )}
+                                {compactionStatus.compactionStatus.severity === 'warning' && (
+                                    <>
+                                        <AlertTriangle size={12} className="text-accent-orange" />
+                                        <span className="text-accent-orange">
+                                            {compactionStatus.conversationTurns} turns - Consider restart
+                                        </span>
+                                    </>
+                                )}
+                                {compactionStatus.compactionStatus.severity === 'critical' && (
+                                    <>
+                                        <XCircle size={12} className="text-accent-red" />
+                                        <span className="text-accent-red font-medium">
+                                            {compactionStatus.conversationTurns} turns - Restart needed
+                                        </span>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Connection Handles - 4-way connectivity proven optimal */}

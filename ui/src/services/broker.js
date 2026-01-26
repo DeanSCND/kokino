@@ -226,6 +226,42 @@ class BrokerClient {
     return response.agent;
   }
 
+  // Bootstrap System (Phase 3)
+
+  async bootstrapAgent(agentId, options = {}) {
+    return this.request(`/api/agents/${agentId}/bootstrap`, {
+      method: 'POST',
+      body: JSON.stringify(options)
+    });
+  }
+
+  async getBootstrapStatus(agentId) {
+    return this.request(`/api/agents/${agentId}/bootstrap/status`);
+  }
+
+  async reloadBootstrap(agentId) {
+    return this.request(`/api/agents/${agentId}/bootstrap/reload`, {
+      method: 'POST'
+    });
+  }
+
+  async updateBootstrapMode(agentId, mode, config = {}) {
+    return this.request(`/api/agents/${agentId}/bootstrap/mode`, {
+      method: 'PUT',
+      body: JSON.stringify({ mode, config })
+    });
+  }
+
+  async getCompactionStatus(agentId) {
+    return this.request(`/api/agents/${agentId}/compaction-status`);
+  }
+
+  async resetCompactionMetrics(agentId) {
+    return this.request(`/api/agents/${agentId}/compaction/reset`, {
+      method: 'POST'
+    });
+  }
+
   // System
 
   async health() {
