@@ -51,9 +51,9 @@ export class CompactionMonitor {
     const totalTokens = (current?.total_tokens || 0) + (metadata.tokens || 0);
     const errorCount = (current?.error_count || 0) + (metadata.error ? 1 : 0);
 
-    // Insert new metrics
+    // Insert or replace metrics (handle duplicate timestamps)
     const stmt = db.prepare(`
-      INSERT INTO compaction_metrics
+      INSERT OR REPLACE INTO compaction_metrics
       (agent_id, conversation_turns, total_tokens, error_count,
        confusion_count, avg_response_time, measured_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
