@@ -62,65 +62,47 @@ export class TeamRunner {
         // Create unique agent ID for this run
         const agentId = `${config.name}-${runId.substring(0, 8)}`;
 
-        // Register agent with the registry
+        // Register agent with the registry in headless mode for AgentRunner
         await this.registry.register(agentId, {
           type: config.cli_type || 'claude-code',
+          commMode: 'headless',  // CRITICAL: Must be headless for AgentRunner
           metadata: {
             configId: config.id,
             teamId: teamId,
             runId: runId,
             role: config.role,
-            projectId: config.project_id
+            projectId: config.project_id,
+            systemPrompt: config.system_prompt,
+            bootstrapMode: config.bootstrap_mode || 'none',
+            bootstrapInstructions: config.bootstrap_instructions
           }
         });
 
-        // Prepare agent configuration for AgentRunner
-        const agentRunConfig = {
-          id: agentId,
-          configId: config.id,
-          name: config.name,
-          cliType: config.cli_type || 'claude-code',
-          workingDirectory: config.working_directory || process.cwd(),
-          systemPrompt: config.system_prompt,
-          bootstrapMode: config.bootstrap_mode || 'none',
-          bootstrapInstructions: config.bootstrap_instructions,
-          bootstrapCommands: config.bootstrap_commands,
-          environmentVariables: config.environmentVariables || {},
-          capabilities: config.capabilities || []
-        };
+        // For team agents, we just register them in headless mode
+        // The actual process spawning happens when they receive their first prompt
+        // This is a simplified approach that avoids complex process management
 
-        // Start agent process using AgentRunner
         try {
-          const result = await this.agentRunner.execute(
-            agentId,
-            'start', // Special command to initialize agent
-            {
-              config: agentRunConfig,
-              teamRun: true
-            }
-          );
+          // Mark agent as started in registry
+          await this.registry.start(agentId);
+
+          // Bootstrap the agent if needed
+          if (config.bootstrap_mode && config.bootstrap_mode !== 'none') {
+            console.log(`[TeamRunner] Bootstrapping agent ${config.name} with mode: ${config.bootstrap_mode}`);
+            // Note: Bootstrap would happen on first prompt execution
+            // We're just marking it as ready here
+          }
 
           // Track the started agent
-          if (result.processId) {
-            agentPids[agentId] = result.processId;
-            startedAgents.set(agentId, {
-              configId: config.id,
-              processId: result.processId,
-              name: config.name
-            });
+          // Since we're using headless mode, AgentRunner will manage the process
+          agentPids[agentId] = 'headless';
+          startedAgents.set(agentId, {
+            configId: config.id,
+            processId: 'headless',
+            name: config.name
+          });
 
-            console.log(`[TeamRunner] Agent ${config.name} started with PID ${result.processId}`);
-          } else {
-            // AgentRunner might handle process differently
-            agentPids[agentId] = 'managed';
-            startedAgents.set(agentId, {
-              configId: config.id,
-              processId: 'managed',
-              name: config.name
-            });
-
-            console.log(`[TeamRunner] Agent ${config.name} started (managed by AgentRunner)`);
-          }
+          console.log(`[TeamRunner] Agent ${config.name} registered and ready (headless mode)`);
         } catch (error) {
           console.error(`[TeamRunner] Failed to start agent ${config.name}:`, error);
           throw new Error(`Failed to start agent ${config.name}: ${error.message}`);
@@ -233,13 +215,22 @@ export class TeamRunner {
       try {
         console.log(`[TeamRunner] Stopping agent ${agentId}`);
 
-        // Deregister from registry
-        await this.registry.deregister(agentId);
+        // Mark as stopped in registry
+        await this.registry.stop(agentId);
 
-        // Stop via AgentRunner if it's managing the process
-        if (agentInfo.processId === 'managed') {
-          await this.agentRunner.stop(agentId);
+        // For headless agents, AgentRunner will handle cleanup when session ends
+        if (agentInfo.processId === 'headless') {
+          // End any active sessions
+          try {
+            await this.agentRunner.endSession(agentId);
+          } catch (error) {
+            // Session might not exist, which is fine
+            console.log(`[TeamRunner] No active session for ${agentId}`);
+          }
         }
+
+        // Remove from registry
+        await this.registry.delete(agentId);
 
         stoppedCount++;
       } catch (error) {
@@ -285,13 +276,21 @@ export class TeamRunner {
 
     for (const [agentId, pid] of Object.entries(agentPids)) {
       try {
-        // Try to deregister from registry
-        await this.registry.deregister(agentId);
+        // Mark as stopped in registry
+        await this.registry.stop(agentId);
 
-        // If it's managed by AgentRunner
-        if (pid === 'managed') {
-          await this.agentRunner.stop(agentId);
+        // If it's a headless agent, try to end session
+        if (pid === 'headless') {
+          try {
+            await this.agentRunner.endSession(agentId);
+          } catch (error) {
+            // Session might not exist, which is fine
+            console.log(`[TeamRunner] No active session for ${agentId}`);
+          }
         }
+
+        // Remove from registry
+        await this.registry.delete(agentId);
 
         stoppedCount++;
       } catch (error) {
