@@ -21,6 +21,7 @@ import { CircuitBreaker } from './CircuitBreaker.js';
 import { LogRotator } from './LogRotator.js';
 import { JSONLParser } from './JSONLParser.js';
 import { CLIVersionTracker } from './CLIVersionTracker.js';
+import { CompactionMonitor } from '../bootstrap/CompactionMonitor.js';
 
 /**
  * Build the full environment that Claude Code expects.
@@ -162,6 +163,7 @@ export class AgentRunner {
     this.logRotator = new LogRotator();
     this.jsonlParser = new JSONLParser();
     this.versionTracker = new CLIVersionTracker();
+    this.compactionMonitor = new CompactionMonitor(); // Phase 3: Issue #135
 
     // Active subprocess calls: agentId -> ChildProcess
     this.activeCalls = new Map();
@@ -290,6 +292,26 @@ export class AgentRunner {
 
       const durationMs = Date.now() - startTime;
 
+      // Phase 3 - Issue #135: Track conversation turn for compaction monitoring
+      try {
+        const compactionStatus = await this.compactionMonitor.trackTurn(agentId, {
+          tokens: result.response.length, // Estimate tokens from response length
+          error: result.code !== 0,
+          responseTime: durationMs / 1000, // Convert to seconds
+          confusionCount: 0
+        });
+
+        // Log warnings when thresholds are hit
+        if (compactionStatus.severity === 'warning') {
+          console.warn(`[AgentRunner] Compaction warning for ${agentId}: ${compactionStatus.reasons.join(', ')}`);
+        } else if (compactionStatus.severity === 'critical') {
+          console.error(`[AgentRunner] CRITICAL compaction for ${agentId}: ${compactionStatus.recommendation}`);
+          console.error(`[AgentRunner] Metrics: ${JSON.stringify(compactionStatus.metrics)}`);
+        }
+      } catch (error) {
+        console.error(`[AgentRunner] Failed to track compaction:`, error);
+      }
+
       // Emit EXECUTION_COMPLETED event
       this.metrics.record('EXECUTION_COMPLETED', agentId, {
         cliType,
@@ -341,6 +363,18 @@ export class AgentRunner {
           content: `Error: ${error.message}`,
           metadata: { error: true, durationMs }
         });
+      }
+
+      // Phase 3 - Issue #135: Track error in compaction monitoring
+      try {
+        await this.compactionMonitor.trackTurn(agentId, {
+          tokens: 0,
+          error: true,
+          responseTime: durationMs / 1000,
+          confusionCount: 0
+        });
+      } catch (trackError) {
+        console.error(`[AgentRunner] Failed to track error in compaction:`, trackError);
       }
 
       // CRITICAL: Always release lock on error
