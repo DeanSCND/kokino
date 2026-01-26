@@ -178,14 +178,17 @@ export class AgentConfig {
   /**
    * Find configs by role
    */
-  static findByRole(role, projectId = null) {
+  static findByRole(role, projectId = undefined) {
     let query = 'SELECT * FROM agent_configs WHERE role = ?';
     const params = [role];
 
-    if (projectId) {
+    if (projectId === null) {
+      query += ' AND project_id IS NULL';
+    } else if (projectId !== undefined) {
       query += ' AND project_id = ?';
       params.push(projectId);
     }
+    // If projectId is undefined, no filter applied (all projects)
 
     query += ' ORDER BY name';
 
@@ -196,14 +199,17 @@ export class AgentConfig {
   /**
    * Find configs by capabilities
    */
-  static findByCapability(capability, projectId = null) {
+  static findByCapability(capability, projectId = undefined) {
     let query = `SELECT * FROM agent_configs WHERE capabilities LIKE ?`;
     const params = [`%"${capability}"%`];
 
-    if (projectId) {
+    if (projectId === null) {
+      query += ' AND project_id IS NULL';
+    } else if (projectId !== undefined) {
       query += ' AND project_id = ?';
       params.push(projectId);
     }
+    // If projectId is undefined, no filter applied (all projects)
 
     query += ' ORDER BY role, name';
 
@@ -216,7 +222,7 @@ export class AgentConfig {
    * @param {string|null} projectId - Filter by project ID. Pass null for global agents, string for project-specific
    * @param {boolean} includeGlobal - If projectId is specified, also include global agents
    */
-  static listAll(projectId = null, includeGlobal = false) {
+  static listAll(projectId = undefined, includeGlobal = false) {
     let query;
     const params = [];
 
@@ -227,12 +233,12 @@ export class AgentConfig {
       // Project-specific AND global agents
       query = 'SELECT * FROM agent_configs WHERE project_id = ? OR project_id IS NULL';
       params.push(projectId);
-    } else if (projectId) {
+    } else if (projectId !== undefined) {
       // Only project-specific agents
       query = 'SELECT * FROM agent_configs WHERE project_id = ?';
       params.push(projectId);
     } else {
-      // All agents
+      // All agents (projectId is undefined)
       query = 'SELECT * FROM agent_configs';
     }
 
