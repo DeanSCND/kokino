@@ -2,9 +2,16 @@
  * Team Service - Team composition and management
  * Phase 4a: Service Layer Foundation
  *
- * NOTE: Backend /api/teams/* endpoints do not exist yet.
- * This service layer is ready for when those routes are implemented.
- * Until then, calls will return 404.
+ * ⚠️ CRITICAL: Backend /api/teams/* endpoints do NOT exist yet.
+ * All save/load/delete methods are DISABLED and throw errors.
+ * Use teamStorage (localStorage) directly until backend routes are implemented.
+ *
+ * TODO Phase 5: Implement /api/teams routes in broker:
+ *   - POST /api/teams (save)
+ *   - GET /api/teams/:id (load)
+ *   - PUT /api/teams/:id (update)
+ *   - DELETE /api/teams/:id (delete)
+ *   - GET /api/teams (list)
  */
 
 import client from './client.js';
@@ -12,6 +19,8 @@ import client from './client.js';
 class TeamService {
   /**
    * Save team configuration
+   * ⚠️ DISABLED: Backend endpoint does not exist
+   * Use teamStorage.save() directly
    */
   async save(teamData) {
     const validated = this.validate(teamData);
@@ -19,35 +28,53 @@ class TeamService {
       throw new Error(`Invalid team: ${validated.errors.join(', ')}`);
     }
 
-    return client.post('/api/teams', teamData);
+    // Backend route not implemented yet
+    throw new Error('Backend /api/teams not implemented. Use teamStorage.save() instead.');
+    // return client.post('/api/teams', teamData);
   }
 
   /**
    * Load team configuration
+   * ⚠️ DISABLED: Backend endpoint does not exist
+   * Use teamStorage.load() directly
    */
   async load(teamId) {
-    return client.get(`/api/teams/${teamId}`);
+    // Backend route not implemented yet
+    throw new Error('Backend /api/teams/:id not implemented. Use teamStorage.load() instead.');
+    // return client.get(`/api/teams/${teamId}`);
   }
 
   /**
    * List all teams
+   * ⚠️ DISABLED: Backend endpoint does not exist
+   * Use teamStorage.list() directly
    */
   async list(filters = {}) {
-    return client.get('/api/teams', { params: filters });
+    // Backend route not implemented yet
+    throw new Error('Backend /api/teams not implemented. Use teamStorage.list() instead.');
+    // return client.get('/api/teams', { params: filters });
   }
 
   /**
    * Update team
+   * ⚠️ DISABLED: Backend endpoint does not exist
+   * Use teamStorage.save() directly
    */
   async update(teamId, updates) {
-    return client.put(`/api/teams/${teamId}`, updates);
+    // Backend route not implemented yet
+    throw new Error('Backend /api/teams/:id not implemented. Use teamStorage.save() instead.');
+    // return client.put(`/api/teams/${teamId}`, updates);
   }
 
   /**
    * Delete team
+   * ⚠️ DISABLED: Backend endpoint does not exist
+   * Use teamStorage.delete() directly
    */
   async delete(teamId) {
-    return client.delete(`/api/teams/${teamId}`);
+    // Backend route not implemented yet
+    throw new Error('Backend /api/teams/:id not implemented. Use teamStorage.delete() instead.');
+    // return client.delete(`/api/teams/${teamId}`);
   }
 
   /**

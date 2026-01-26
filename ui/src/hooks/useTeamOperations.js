@@ -18,18 +18,22 @@ export default function useTeamOperations() {
   const clearAgents = useStore(state => state.clearAgents);
 
   /**
-   * Save team to backend and localStorage
+   * Save team to localStorage
+   * NOTE: Backend /api/teams not implemented yet, using localStorage only
    */
   const saveTeam = useCallback(async () => {
     const config = useStore.getState();
     const teamConfig = selectTeamConfig(config);
 
     try {
-      // Save to backend
-      const saved = await teamService.save(teamConfig);
+      // Validate before saving
+      const validation = teamService.validate(teamConfig);
+      if (!validation.valid) {
+        throw new Error(`Invalid team: ${validation.errors.join(', ')}`);
+      }
 
-      // Save to localStorage as backup
-      teamStorage.save(saved);
+      // Save to localStorage (backend not available)
+      const saved = teamStorage.save(teamConfig);
 
       // Update store
       setTeamData(saved);
@@ -43,11 +47,12 @@ export default function useTeamOperations() {
   }, [setTeamData, markSaved]);
 
   /**
-   * Load team from backend
+   * Load team from localStorage
+   * NOTE: Backend /api/teams not implemented yet, using localStorage only
    */
   const loadTeam = useCallback(async (teamId) => {
     try {
-      const team = await teamService.load(teamId);
+      const team = teamStorage.load(teamId);
 
       setTeamData(team);
       setNodes(team.nodes || []);
@@ -62,30 +67,11 @@ export default function useTeamOperations() {
   }, [setTeamData, setNodes, setEdges, markSaved]);
 
   /**
-   * Load team from localStorage
-   */
-  const loadTeamLocal = useCallback(async (teamId) => {
-    try {
-      const team = teamStorage.load(teamId);
-
-      setTeamData(team);
-      setNodes(team.nodes || []);
-      setEdges(team.edges || []);
-      markDirty(); // Local load = not synced with backend
-
-      return team;
-    } catch (error) {
-      console.error('Failed to load team from localStorage:', error);
-      throw error;
-    }
-  }, [setTeamData, setNodes, setEdges, markDirty]);
-
-  /**
-   * Delete team
+   * Delete team from localStorage
+   * NOTE: Backend /api/teams not implemented yet, using localStorage only
    */
   const deleteTeam = useCallback(async (teamId) => {
     try {
-      await teamService.delete(teamId);
       teamStorage.delete(teamId);
     } catch (error) {
       console.error('Failed to delete team:', error);
@@ -124,7 +110,6 @@ export default function useTeamOperations() {
   return {
     saveTeam,
     loadTeam,
-    loadTeamLocal,
     deleteTeam,
     clearTeam: clear,
     exportTeam,
