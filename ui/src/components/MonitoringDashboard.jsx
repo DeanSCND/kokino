@@ -78,13 +78,15 @@ export const MonitoringDashboard = () => {
   useEffect(() => {
     const checkForAlerts = async () => {
       try {
-        // Poll for warning/error events since last check
-        const data = await apiClient.getEvents({
-          eventType: 'warning,error',
-          limit: 20
-        });
+        // Poll for warning and error events separately (API only supports single event_type)
+        const [warningData, errorData] = await Promise.all([
+          apiClient.getEvents({ eventType: 'warning', limit: 10 }),
+          apiClient.getEvents({ eventType: 'error', limit: 10 })
+        ]);
 
-        const newAlerts = data.events.filter(event => {
+        const allEvents = [...(warningData.events || []), ...(errorData.events || [])];
+
+        const newAlerts = allEvents.filter(event => {
           const eventTime = new Date(event.timestamp).getTime();
           return eventTime > lastAlertCheck &&
                  (event.event_type === 'warning' || event.event_type === 'error');
