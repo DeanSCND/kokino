@@ -118,6 +118,8 @@ This document specifies a **second communication method** for Kokino that replac
 | Codex | `codex exec` | Single turn, no session |
 | Aider | stdin/pipe | Text output only |
 | Continue | `-p` | Stateless |
+| Crush (Charm) | `crush run` | Session resume is open feature request ([#1015](https://github.com/charmbracelet/crush/issues/1015)) |
+| OpenCode (SST) | `-p` | Archived; forked from original pre-Charm |
 
 ---
 

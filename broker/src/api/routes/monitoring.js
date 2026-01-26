@@ -247,7 +247,8 @@ export function createMonitoringRoutes(monitoringService) {
      */
     async cleanup(req, res) {
       try {
-        const daysToKeep = req.body?.daysToKeep || 7;
+        // Validate and clamp daysToKeep to positive integer, max 365
+        const daysToKeep = Math.max(1, Math.min(365, parseInt(req.body?.daysToKeep) || 7));
 
         const result = await monitoringService.cleanup(daysToKeep);
 
