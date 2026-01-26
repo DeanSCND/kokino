@@ -1,13 +1,13 @@
 # Kokino Project Status
 
-*Last Updated: 2026-01-26*
+*Last Updated: 2026-01-27*
 
-## Overall Status: Phases 1-2 Complete, Phase 3 Partial, Phases 4-6 Planned
+## Overall Status: Phases 1-4 COMPLETE ✅, Phases 5-6 Ready for Implementation
 
 ### Quick Summary
-- **Working:** Core broker, agent configs, UI components
-- **Partial:** Bootstrap system (needs API wiring)
-- **Planned:** Service layer, teams, monitoring
+- **Complete:** Core broker, agent configs, bootstrap system, Canvas refactor with Zustand
+- **Ready to Build:** Teams (simplified), Monitoring (practical)
+- **Working System:** Full agent lifecycle with context loading
 
 ## Phase Status
 
@@ -51,68 +51,109 @@
 
 ---
 
-### 🔧 Phase 3: Bootstrap System - PARTIALLY COMPLETE
-**Status:** Core Built, Needs Integration
+### ✅ Phase 3: Bootstrap System - COMPLETE
+**Status:** Production Ready
 
-#### What Exists:
-- `broker/src/bootstrap/FileLoader.js` - File loading logic ✅
-- `broker/src/bootstrap/BootstrapManager.js` - Bootstrap orchestration ✅
+#### What's Built:
+- `broker/src/bootstrap/FileLoader.js` - File loading with compaction ✅
+- `broker/src/bootstrap/BootstrapManager.js` - Full orchestration ✅
+- `broker/src/bootstrap/BootstrapModes.js` - Mode definitions ✅
 - Database tables (bootstrap_history, compaction_metrics) ✅
-- API route handlers drafted ✅
+- API routes wired and working ✅
+- Compaction monitoring integrated ✅
+- UI shows bootstrap status on agent nodes ✅
 
-#### What's Missing:
-- Wire routes to Express app ❌
-- Integration with agent startup ❌
-- Compaction monitoring implementation ❌
-- UI integration testing ❌
-
-#### Active Issues:
-- #134: Complete Bootstrap API Integration (2-3 days)
-- #135: Add Compaction Monitoring (2 days)
-- #136: Test Bootstrap UI Integration (1-2 days)
+#### Key Features:
+- 4 bootstrap modes (none, auto, manual, custom)
+- Automatic CLAUDE.md and .kokino file loading
+- Token compaction for large contexts
+- Performance metrics tracking
+- Bootstrap history in database
 
 ---
 
-### 📋 Phase 4: Canvas Service Layer - PLANNED
-**Status:** Not Started (Simplified Scope)
+### ✅ Phase 4: Canvas Service Layer - COMPLETE
+**Status:** Successfully Refactored
 
-#### Current State:
-- Canvas.jsx: 1547 lines of working but tangled code
-- 47+ useState hooks, mixed concerns
-- Direct API calls throughout
+#### What Was Achieved:
+- **Canvas reduced from 1,547 to 262 lines** (83% reduction!)
+- **Service layer extracted** to ui/src/services/api/
+- **Zustand state management** implemented
+- **Clean separation of concerns**
 
-#### Planned Work:
-- Extract API calls to service layer (NOT full rewrite)
-- Optional: Add lightweight state management (Zustand)
-- Keep existing UI and functionality
+#### Implementation Details:
+- **State Management**: 2 Zustand stores (useAgentStore, useUIStore)
+- **Service Layer**:
+  - agentService.js - Agent CRUD and lifecycle
+  - messageService.js - Message handling
+  - teamService.js - Team operations
+  - orchestrationService.js - Workflow execution
+  - configService.js - Configuration management
+- **Custom Hooks**: Extracted complex logic from components
+- **Redux DevTools**: Full debugging support
 
-#### Active Issues:
-- #137: Extract Canvas Service Layer (3-4 days)
-- #138: Add Basic State Management - Optional (2-3 days)
+#### Completed Features:
+- All API calls extracted from Canvas ✅
+- State centralized in Zustand stores ✅
+- Memoized selectors for performance ✅
+- Error handling standardized ✅
+- Loading states managed globally ✅
 
 ---
 
-### 🚧 Phase 5: Team Lifecycle - NEEDS REDESIGN
-**Status:** Specification Only
+### 📋 Phase 5: Team Lifecycle - READY TO BUILD
+**Status:** Designed and Ready for Implementation
 
-#### Current Problems:
-- NO implementation exists (no models, tables, or APIs)
-- Specification overly ambitious (workflow engine, phases, etc.)
-- Needs complete build from scratch
-
-#### Proposed Simplification:
+#### Simplified Scope:
 - Basic team CRUD operations
-- Simple start/stop all agents
-- No workflow orchestration (defer)
-- Shared workspace only (no isolation)
+- Start/stop multiple agents with one command
+- Team configuration storage (JSON)
+- Simple team status tracking
+- NO workflow orchestration (intentionally deferred)
 
-#### Documentation:
-- See `docs/implementation/phase5-team-lifecycle-guide.md` for realistic plan
+#### Implementation Plan:
+- **Database**: teams and team_runs tables (#139)
+- **Model**: Team.js with validation (#140)
+- **Service**: TeamRunner for process management (#141)
+- **API**: REST endpoints for team operations (#142)
+- **UI**: TeamManager component (#143)
+
+#### GitHub Issues Created:
+- #139: Database schema (0.5 days)
+- #140: Team model (1 day)
+- #141: TeamRunner service (2-3 days)
+- #142: API routes (1 day)
+- #143: UI component (1 day)
+
+**Total Timeline: ~1 week**
 
 ---
 
-### ❓ Phase 6: Monitoring - NOT REVIEWED
-**Status:** Unknown (needs analysis like Phase 5)
+### 📋 Phase 6: Monitoring - READY TO BUILD
+**Status:** Designed and Ready for Implementation
+
+#### Practical Scope:
+- Agent CPU/memory metrics collection
+- Error log aggregation
+- Alert thresholds and notifications
+- Simple monitoring dashboard
+- NO file operation interception (too complex)
+
+#### Implementation Plan:
+- **Database**: Metrics and alert tables (#144)
+- **Service**: MonitoringService for data collection (#145)
+- **API**: Monitoring data endpoints (#146)
+- **UI**: Dashboard with charts (#147)
+- **Extras**: Alert notifications (#148)
+
+#### GitHub Issues Created:
+- #144: Database schema (0.5 days)
+- #145: MonitoringService (2-3 days)
+- #146: API routes (1 day)
+- #147: Dashboard UI (2 days)
+- #148: Notifications (1 day)
+
+**Total Timeline: ~1 week**
 
 ---
 
@@ -125,32 +166,44 @@ broker/src/
 │   ├── AgentRegistry.js     ✅ Complete
 │   ├── AgentConfig.js       ✅ Complete
 │   ├── TicketStore.js       ✅ Complete (message routing)
-│   └── Team.js              ❌ Not built
+│   └── Team.js              ❌ Not built (Phase 5)
 ├── bootstrap/
-│   ├── FileLoader.js        ✅ Built
-│   ├── BootstrapManager.js  ✅ Built
-│   └── CompactionMonitor.js ❌ Not built
+│   ├── FileLoader.js        ✅ Complete
+│   ├── BootstrapManager.js  ✅ Complete
+│   └── BootstrapModes.js    ✅ Complete
 ├── services/
-│   └── (empty)              ❌ Not built
+│   ├── TeamRunner.js        ❌ Not built (Phase 5)
+│   └── MonitoringService.js ❌ Not built (Phase 6)
 └── api/routes/
     ├── agents.js            ✅ Complete
-    ├── bootstrap.js         🔧 Needs wiring
-    └── teams.js             ❌ Not built
+    ├── bootstrap.js         ✅ Complete
+    ├── teams.js             ❌ Not built (Phase 5)
+    └── monitoring.js        ❌ Not built (Phase 6)
 ```
 
 ### Frontend (UI)
 ```
 ui/src/
 ├── components/
-│   ├── agents/              ✅ All components built!
-│   ├── AgentNode.jsx        ✅ Complete
-│   └── Canvas.jsx           ⚠️ Works but needs refactor
+│   ├── agents/              ✅ All components built
+│   ├── AgentNode.jsx        ✅ Complete (with bootstrap status)
+│   ├── TeamManager.jsx      ❌ Not built (Phase 5)
+│   └── MonitoringDashboard.jsx ❌ Not built (Phase 6)
 ├── services/
-│   ├── api-client.js        ✅ Complete
+│   ├── api/
+│   │   ├── client.js        ✅ Complete
+│   │   ├── agentService.js  ✅ Complete
+│   │   ├── messageService.js ✅ Complete
+│   │   ├── teamService.js   ✅ Complete
+│   │   ├── orchestrationService.js ✅ Complete
+│   │   └── configService.js ✅ Complete
 │   ├── broker.js            ✅ Complete
-│   └── (no service layer)   ❌ Not built
+│   └── api-client.js        ✅ Complete
+├── stores/
+│   ├── useAgentStore.js     ✅ Complete (Zustand)
+│   └── useUIStore.js        ✅ Complete (Zustand)
 └── pages/
-    └── Canvas.jsx           ⚠️ 1547 lines, needs service extraction
+    └── Canvas.jsx           ✅ Refactored (262 lines!)
 ```
 
 ## Database Tables
@@ -171,34 +224,36 @@ ui/src/
 
 ## Next Steps (Priority Order)
 
-### Week 1: Complete Phase 3
-1. Wire bootstrap API routes (Issue #134)
-2. Add compaction monitoring (Issue #135)
-3. Test UI integration (Issue #136)
+### ✅ Phases 1-4: COMPLETE
+All core functionality including bootstrap and Canvas refactor are done.
 
-### Week 2: Phase 4 Service Layer
-1. Extract Canvas services (Issue #137)
-2. Optional: Add state management (Issue #138)
+### Week 1: Phase 5 - Teams (Ready to Build)
+1. Create database schema (#139) - 0.5 days
+2. Implement Team model (#140) - 1 day
+3. Build TeamRunner service (#141) - 2-3 days
+4. Wire API routes (#142) - 1 day
+5. Create UI component (#143) - 1 day
 
-### Week 3: Simplified Phase 5
-1. Design simplified team model
-2. Basic team CRUD
-3. Simple start/stop functionality
+### Week 2: Phase 6 - Monitoring (Ready to Build)
+1. Create database schema (#144) - 0.5 days
+2. Build MonitoringService (#145) - 2-3 days
+3. Wire API routes (#146) - 1 day
+4. Build dashboard UI (#147) - 2 days
+5. Add notifications (#148) - 1 day
 
 ## Known Issues
 
 ### Critical:
-- None (system is functional)
+- None (system is fully functional)
 
-### Important:
-- Canvas needs service layer extraction
-- Bootstrap API not wired up
-- No team functionality
+### Pending Features:
+- Team management (Phase 5)
+- Monitoring dashboard (Phase 6)
 
-### Nice to Have:
-- State management for Canvas
+### Deferred (Intentionally):
 - Workflow orchestration
-- Monitoring dashboard
+- Workspace isolation
+- File operation interception
 
 ## Success Metrics
 
@@ -207,15 +262,15 @@ ui/src/
 - ✅ Configuration UI exists and works
 - ✅ Store & forward messaging works
 - ✅ Database persistence works
+- ✅ Agents can load context on startup
+- ✅ Compaction monitoring alerts
+- ✅ Canvas has clean architecture (262 lines!)
+- ✅ Service layer properly extracted
+- ✅ State management with Zustand
 
-### In Progress:
-- 🔧 Agents can load context on startup
-- 🔧 Compaction monitoring alerts
-
-### Not Started:
-- ❌ Teams can start/stop as units
-- ❌ Canvas has clean architecture
-- ❌ Monitoring dashboard exists
+### Ready to Build:
+- 📋 Teams can start/stop as units (Phase 5)
+- 📋 Monitoring dashboard exists (Phase 6)
 
 ---
 
@@ -228,8 +283,16 @@ For questions about implementation status, check:
 
 ## Summary
 
-**The good:** Phases 1-2 are complete and working. The UI components exist (contrary to earlier assessment). Bootstrap system is partially built.
+**Completed (Phases 1-4):**
+- Core infrastructure fully operational
+- Agent configuration with UI
+- Bootstrap system with context loading
+- Canvas refactored (83% size reduction!)
+- Zustand state management implemented
+- Service layer properly extracted
 
-**The bad:** Teams don't exist at all. Canvas needs refactoring but works.
+**Ready to Build (Phases 5-6):**
+- Teams: Simple start/stop functionality (1 week)
+- Monitoring: Practical metrics dashboard (1 week)
 
-**The realistic:** We can have a fully functional system with bootstrap in 1 week, service layer in another week, and basic teams in a third week.
+**The Win:** All core functionality is complete and working. The system can now register agents, load context, and manage state efficiently. The Canvas refactor exceeded expectations with an 83% reduction in code size.
