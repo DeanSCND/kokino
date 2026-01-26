@@ -386,6 +386,28 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
     }
   });
 
+  /**
+   * GET /api/teams/runs/:runId/status
+   * Get detailed status for a specific team run (Phase 6)
+   */
+  router.get('/teams/runs/:runId/status', async (req, res) => {
+    try {
+      const { runId } = req.params;
+
+      const status = teamRunner.getRunStatus(runId);
+
+      jsonResponse(res, 200, status);
+    } catch (error) {
+      console.error('[Teams API] Error getting run status:', error);
+
+      const statusCode = error.message.includes('not found') ? 404 : 500;
+      jsonResponse(res, statusCode, {
+        error: 'Failed to get run status',
+        message: error.message
+      });
+    }
+  });
+
   console.log('[Teams API] ✓ Team management endpoints registered');
 }
 
