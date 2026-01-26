@@ -238,6 +238,7 @@ export const Canvas = ({ setHeaderControls }) => {
                 },
                 data: {
                     name: name,
+                    agentId: name, // Phase 3: Add agentId for bootstrap/compaction status
                     role: config.role,
                     status: 'registering',
                     task: 'Instantiating from config...',
@@ -454,8 +455,8 @@ export const Canvas = ({ setHeaderControls }) => {
         const commMode = agent.metadata?.commMode || agent.commMode || 'tmux';
 
         if (commMode === 'headless') {
-            // AgentChatPanel expects agentId field, but node.data has name
-            setChatAgent({ ...agent, agentId: agent.name });
+            // Phase 3: agentId now included in node.data
+            setChatAgent({ ...agent, agentId: agent.agentId || agent.name });
         } else {
             setTerminalAgent(agent.name);
         }

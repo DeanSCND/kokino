@@ -46,7 +46,10 @@ const escalationStyles = {
 };
 
 export const AgentNode = ({ data, id }) => {
-    const { role, name, status = 'idle', task, escalation, onDelete, agentId } = data;
+    const { role, name, status = 'idle', task, escalation, onDelete, agentId: providedAgentId } = data;
+    // Fallback to name if agentId not provided (backwards compatibility)
+    const agentId = providedAgentId || name;
+
     const style = statusStyles[status] || statusStyles.idle;
     const StatusIcon = style.icon;
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
