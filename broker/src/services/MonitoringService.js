@@ -39,6 +39,22 @@ export class MonitoringService extends EventEmitter {
       ERROR_COUNT_CRITICAL: 10
     };
 
+    // Notification configuration (Phase 6.5)
+    this.notificationConfig = {
+      enabled: process.env.MONITORING_NOTIFICATIONS !== 'false',
+      webhookUrl: process.env.ALERT_WEBHOOK_URL,
+      suppressionWindow: 30 * 60 * 1000, // 30 minutes
+      channels: ['console', 'ui']
+    };
+
+    // Add webhook channel if configured
+    if (this.notificationConfig.webhookUrl) {
+      this.notificationConfig.channels.push('webhook');
+    }
+
+    // Alert suppression tracking
+    this.alertHistory = new Map(); // agentId:alertType -> lastSentTimestamp
+
     console.log('[MonitoringService] Initialized');
   }
 
@@ -383,6 +399,11 @@ export class MonitoringService extends EventEmitter {
    * @param {string} severity - Alert severity (warning, critical)
    */
   emitAlert(agentId, type, message, severity) {
+    // Check if alert should be suppressed (Phase 6.5)
+    if (!this.shouldSendAlert(agentId, type)) {
+      return; // Suppress duplicate alert
+    }
+
     const alert = {
       agentId,
       type,
@@ -394,10 +415,69 @@ export class MonitoringService extends EventEmitter {
     // Log as warning/error event
     this.logEvent(agentId, severity === 'critical' ? 'error' : 'warning', message, { alertType: type });
 
-    // Emit alert event
+    // Emit alert event (for UI subscriptions)
     this.emit('alert', alert);
 
-    console.warn(`[MonitoringService] ALERT [${severity.toUpperCase()}]: ${agentId} - ${message}`);
+    // Send notifications (Phase 6.5)
+    this.sendNotification(alert);
+  }
+
+  /**
+   * Check if alert should be sent (duplicate suppression)
+   * @param {string} agentId - Agent ID
+   * @param {string} alertType - Alert type
+   * @returns {boolean} - True if alert should be sent
+   */
+  shouldSendAlert(agentId, alertType) {
+    const key = `${agentId}:${alertType}`;
+    const lastSent = this.alertHistory.get(key);
+    const now = Date.now();
+
+    if (lastSent && (now - lastSent) < this.notificationConfig.suppressionWindow) {
+      return false; // Suppress duplicate within window
+    }
+
+    this.alertHistory.set(key, now);
+    return true;
+  }
+
+  /**
+   * Send alert notification through configured channels
+   * @param {Object} alert - Alert object
+   */
+  async sendNotification(alert) {
+    if (!this.notificationConfig.enabled) return;
+
+    const { channels } = this.notificationConfig;
+
+    // Console notification
+    if (channels.includes('console')) {
+      const symbol = alert.severity === 'critical' ? '🔴' : '⚠️';
+      console.warn(`${symbol} [ALERT] ${alert.agentId}: ${alert.message}`);
+    }
+
+    // Webhook notification
+    if (channels.includes('webhook') && this.notificationConfig.webhookUrl) {
+      try {
+        await fetch(this.notificationConfig.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            timestamp: alert.timestamp,
+            severity: alert.severity,
+            agentId: alert.agentId,
+            type: alert.type,
+            message: alert.message
+          }),
+          signal: AbortSignal.timeout(5000)
+        });
+        console.log(`[MonitoringService] Webhook notification sent for ${alert.agentId}`);
+      } catch (err) {
+        console.error('[MonitoringService] Webhook notification failed:', err.message);
+      }
+    }
+
+    // UI notification happens via EventEmitter 'alert' event
   }
 
   /**

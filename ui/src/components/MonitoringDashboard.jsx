@@ -15,6 +15,7 @@ export const MonitoringDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastAlertCheck, setLastAlertCheck] = useState(Date.now());
   const toast = useToast();
 
   // Load dashboard data
@@ -72,6 +73,42 @@ export const MonitoringDashboard = () => {
 
     return () => clearInterval(interval);
   }, [autoRefresh, selectedAgent]);
+
+  // Alert notifications polling (Phase 6.5)
+  useEffect(() => {
+    const checkForAlerts = async () => {
+      try {
+        // Poll for warning/error events since last check
+        const data = await apiClient.getEvents({
+          eventType: 'warning,error',
+          limit: 20
+        });
+
+        const newAlerts = data.events.filter(event => {
+          const eventTime = new Date(event.timestamp).getTime();
+          return eventTime > lastAlertCheck &&
+                 (event.event_type === 'warning' || event.event_type === 'error');
+        });
+
+        // Show toast notifications for new alerts
+        newAlerts.forEach(alert => {
+          const severity = alert.event_type === 'error' ? 'error' : 'warning';
+          toast[severity](`${alert.agent_id}: ${alert.message}`, 8000);
+        });
+
+        if (newAlerts.length > 0) {
+          setLastAlertCheck(Date.now());
+        }
+      } catch (error) {
+        console.error('[MonitoringDashboard] Alert check failed:', error);
+      }
+    };
+
+    // Check for alerts every 10 seconds
+    const interval = setInterval(checkForAlerts, 10000);
+
+    return () => clearInterval(interval);
+  }, [lastAlertCheck, toast]);
 
   // Handle agent selection
   const handleAgentClick = async (agentId) => {
