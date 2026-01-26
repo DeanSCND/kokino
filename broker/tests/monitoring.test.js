@@ -12,16 +12,16 @@ describe('MonitoringService', () => {
   let mockRegistry;
 
   beforeEach(() => {
-    // Create mock agent registry
+    // Create mock agent registry with unique test agent IDs
     mockRegistry = {
       list: vi.fn(() => [
         {
-          agentId: 'test-agent-1',
+          agentId: 'monitoring-test-1',
           status: 'online',
           metadata: { pid: 12345 }
         },
         {
-          agentId: 'test-agent-2',
+          agentId: 'monitoring-test-2',
           status: 'online',
           metadata: {}
         }
@@ -35,19 +35,19 @@ describe('MonitoringService', () => {
 
     monitoringService = new MonitoringService(mockRegistry);
 
-    // Delete test agents first (CASCADE will delete related data)
-    db.prepare('DELETE FROM agents WHERE agent_id LIKE ?').run('test-agent-%');
+    // Delete ONLY monitoring test agents (use unique prefix to avoid breaking other tests)
+    db.prepare('DELETE FROM agents WHERE agent_id LIKE ?').run('monitoring-test-%');
 
-    // Insert test agents to satisfy foreign key constraints
+    // Insert test agents with unique prefix to satisfy foreign key constraints
     const now = new Date().toISOString();
     db.prepare(`
       INSERT OR IGNORE INTO agents (agent_id, type, status, last_heartbeat, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run('test-agent-1', 'test', 'online', now, now, now);
+    `).run('monitoring-test-1', 'test', 'online', now, now, now);
     db.prepare(`
       INSERT OR IGNORE INTO agents (agent_id, type, status, last_heartbeat, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run('test-agent-2', 'test', 'online', now, now, now);
+    `).run('monitoring-test-2', 'test', 'online', now, now, now);
   });
 
   afterEach(() => {
@@ -97,9 +97,9 @@ describe('MonitoringService', () => {
         messageCount: 5
       };
 
-      monitoringService.saveMetrics('test-agent-1', metrics);
+      monitoringService.saveMetrics('monitoring-test-1', metrics);
 
-      const saved = db.prepare('SELECT * FROM agent_metrics WHERE agent_id = ?').get('test-agent-1');
+      const saved = db.prepare('SELECT * FROM agent_metrics WHERE agent_id = ?').get('monitoring-test-1');
       expect(saved).toBeDefined();
       expect(saved.cpu_percent).toBe(25.5);
       expect(saved.memory_mb).toBe(512);
@@ -117,12 +117,12 @@ describe('MonitoringService', () => {
         };
 
         monitoringService.on('metrics', (data) => {
-          expect(data.agentId).toBe('test-agent-1');
+          expect(data.agentId).toBe('monitoring-test-1');
           expect(data.cpuPercent).toBe(25.5);
           resolve();
         });
 
-        monitoringService.saveMetrics('test-agent-1', metrics);
+        monitoringService.saveMetrics('monitoring-test-1', metrics);
       });
     });
 
@@ -143,11 +143,11 @@ describe('MonitoringService', () => {
 
   describe('Event Logging', () => {
     it('should log events to database', () => {
-      monitoringService.logEvent('test-agent-1', 'started', 'Agent started successfully', {
+      monitoringService.logEvent('monitoring-test-1', 'started', 'Agent started successfully', {
         pid: 12345
       });
 
-      const event = db.prepare('SELECT * FROM agent_events WHERE agent_id = ?').get('test-agent-1');
+      const event = db.prepare('SELECT * FROM agent_events WHERE agent_id = ?').get('monitoring-test-1');
       expect(event).toBeDefined();
       expect(event.event_type).toBe('started');
       expect(event.message).toBe('Agent started successfully');
@@ -157,13 +157,13 @@ describe('MonitoringService', () => {
     it('should emit event', () => {
       return new Promise((resolve) => {
         monitoringService.on('event', (data) => {
-          expect(data.agentId).toBe('test-agent-1');
+          expect(data.agentId).toBe('monitoring-test-1');
           expect(data.eventType).toBe('info');
           expect(data.message).toBe('Test event');
           resolve();
         });
 
-        monitoringService.logEvent('test-agent-1', 'info', 'Test event');
+        monitoringService.logEvent('monitoring-test-1', 'info', 'Test event');
       });
     });
   });
@@ -178,9 +178,9 @@ describe('MonitoringService', () => {
       const error = new Error('Test error');
       error.stack = 'Error: Test error\n    at test.js:10';
 
-      monitoringService.logError('test-agent-1', error);
+      monitoringService.logError('monitoring-test-1', error);
 
-      const logged = db.prepare('SELECT * FROM error_logs WHERE agent_id = ?').get('test-agent-1');
+      const logged = db.prepare('SELECT * FROM error_logs WHERE agent_id = ?').get('monitoring-test-1');
       expect(logged).toBeDefined();
       expect(logged.error_type).toBe('Error');
       expect(logged.message).toBe('Test error');
@@ -193,9 +193,9 @@ describe('MonitoringService', () => {
         message: 'Something went wrong'
       };
 
-      monitoringService.logError('test-agent-1', error);
+      monitoringService.logError('monitoring-test-1', error);
 
-      const logged = db.prepare('SELECT * FROM error_logs WHERE agent_id = ?').get('test-agent-1');
+      const logged = db.prepare('SELECT * FROM error_logs WHERE agent_id = ?').get('monitoring-test-1');
       expect(logged).toBeDefined();
       expect(logged.error_type).toBe('CustomError');
       expect(logged.message).toBe('Something went wrong');
@@ -203,9 +203,9 @@ describe('MonitoringService', () => {
 
     it('should resolve errors', () => {
       const error = new Error('Test error');
-      monitoringService.logError('test-agent-1', error);
+      monitoringService.logError('monitoring-test-1', error);
 
-      const errorLog = db.prepare('SELECT * FROM error_logs WHERE agent_id = ?').get('test-agent-1');
+      const errorLog = db.prepare('SELECT * FROM error_logs WHERE agent_id = ?').get('monitoring-test-1');
       expect(errorLog.resolved).toBe(0);
 
       monitoringService.resolveError(errorLog.id, 'admin');
@@ -223,12 +223,12 @@ describe('MonitoringService', () => {
         // Remove the default handler and add specific one for this test
         monitoringService.removeAllListeners('error');
         monitoringService.on('error', (data) => {
-          expect(data.agentId).toBe('test-agent-1');
+          expect(data.agentId).toBe('monitoring-test-1');
           expect(data.error.message).toBe('Test error');
           resolve();
         });
 
-        monitoringService.logError('test-agent-1', error);
+        monitoringService.logError('monitoring-test-1', error);
       });
     });
   });
@@ -239,7 +239,7 @@ describe('MonitoringService', () => {
       db.prepare(`
         INSERT INTO agent_metrics (agent_id, cpu_percent, memory_mb, status, error_count, message_count)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run('test-agent-1', 90, 1500, 'online', 15, 10);
+      `).run('monitoring-test-1', 90, 1500, 'online', 15, 10);
     });
 
     it('should emit CPU alert for high usage', () => {
@@ -247,7 +247,7 @@ describe('MonitoringService', () => {
         monitoringService.on('alert', (alert) => {
           if (alert.type === 'high_cpu') {
             expect(alert.severity).toBe('warning'); // 90% is >= 80 but < 95
-            expect(alert.agentId).toBe('test-agent-1');
+            expect(alert.agentId).toBe('monitoring-test-1');
             expect(alert.message).toContain('90');
             resolve();
           }
@@ -262,7 +262,7 @@ describe('MonitoringService', () => {
         monitoringService.on('alert', (alert) => {
           if (alert.type === 'high_memory') {
             expect(alert.severity).toBe('warning');
-            expect(alert.agentId).toBe('test-agent-1');
+            expect(alert.agentId).toBe('monitoring-test-1');
             resolve();
           }
         });
@@ -276,7 +276,7 @@ describe('MonitoringService', () => {
         monitoringService.on('alert', (alert) => {
           if (alert.type === 'high_errors') {
             expect(alert.severity).toBe('critical');
-            expect(alert.agentId).toBe('test-agent-1');
+            expect(alert.agentId).toBe('monitoring-test-1');
             resolve();
           }
         });
@@ -295,17 +295,17 @@ describe('MonitoringService', () => {
       db.prepare(`
         INSERT INTO agent_metrics (agent_id, cpu_percent, memory_mb, status, error_count, message_count)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run('test-agent-1', 25, 512, 'online', 0, 5);
+      `).run('monitoring-test-1', 25, 512, 'online', 0, 5);
 
-      monitoringService.logEvent('test-agent-1', 'started', 'Agent started');
-      monitoringService.logError('test-agent-1', new Error('Test error'));
+      monitoringService.logEvent('monitoring-test-1', 'started', 'Agent started');
+      monitoringService.logError('monitoring-test-1', new Error('Test error'));
     });
 
     it('should get dashboard data', async () => {
       const data = await monitoringService.getDashboardData();
 
       expect(data.agents).toHaveLength(2);
-      expect(data.agents[0].agentId).toBe('test-agent-1');
+      expect(data.agents[0].agentId).toBe('monitoring-test-1');
       expect(data.agents[0].metrics).toBeDefined();
       expect(data.recentEvents).toBeDefined();
       expect(data.activeErrors).toBeDefined();
@@ -313,10 +313,10 @@ describe('MonitoringService', () => {
     });
 
     it('should get agent-specific dashboard', async () => {
-      const data = await monitoringService.getAgentDashboard('test-agent-1');
+      const data = await monitoringService.getAgentDashboard('monitoring-test-1');
 
       expect(data.agent).toBeDefined();
-      expect(data.agent.agentId).toBe('test-agent-1');
+      expect(data.agent.agentId).toBe('monitoring-test-1');
       expect(data.metrics).toBeDefined();
       expect(data.events).toBeDefined();
       expect(data.errors).toBeDefined();
@@ -338,24 +338,24 @@ describe('MonitoringService', () => {
       db.prepare(`
         INSERT INTO agent_metrics (agent_id, cpu_percent, memory_mb, status, timestamp)
         VALUES (?, ?, ?, ?, datetime('now', '-10 days'))
-      `).run('test-agent-1', 25, 512, 'online');
+      `).run('monitoring-test-1', 25, 512, 'online');
 
       db.prepare(`
         INSERT INTO agent_events (agent_id, event_type, message, timestamp)
         VALUES (?, ?, ?, datetime('now', '-10 days'))
-      `).run('test-agent-1', 'info', 'Old event');
+      `).run('monitoring-test-1', 'info', 'Old event');
 
       // Insert resolved error (old)
       db.prepare(`
         INSERT INTO error_logs (agent_id, error_type, message, resolved, timestamp)
         VALUES (?, ?, ?, ?, datetime('now', '-10 days'))
-      `).run('test-agent-1', 'Error', 'Old resolved error', 1);
+      `).run('monitoring-test-1', 'Error', 'Old resolved error', 1);
 
       // Insert unresolved error (old) - should NOT be deleted
       db.prepare(`
         INSERT INTO error_logs (agent_id, error_type, message, resolved, timestamp)
         VALUES (?, ?, ?, ?, datetime('now', '-10 days'))
-      `).run('test-agent-1', 'Error', 'Old unresolved error', 0);
+      `).run('monitoring-test-1', 'Error', 'Old unresolved error', 0);
     });
 
     it('should clean up old data', async () => {
@@ -368,7 +368,7 @@ describe('MonitoringService', () => {
       // Verify unresolved error still exists
       const unresolvedError = db.prepare(
         'SELECT * FROM error_logs WHERE resolved = 0 AND agent_id = ?'
-      ).get('test-agent-1');
+      ).get('monitoring-test-1');
       expect(unresolvedError).toBeDefined();
     });
   });

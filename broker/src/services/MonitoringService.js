@@ -20,11 +20,13 @@ export class MonitoringService extends EventEmitter {
     this.registry = agentRegistry;
     this.metricsInterval = null;
     this.alertInterval = null;
+    this.cleanupInterval = null;
     this.isRunning = false;
 
     // Configuration
     this.COLLECTION_INTERVAL_MS = 30000; // 30 seconds
     this.ALERT_CHECK_INTERVAL_MS = 60000; // 1 minute
+    this.CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
     this.DATA_RETENTION_DAYS = 7;
 
     // Alert thresholds
@@ -72,7 +74,14 @@ export class MonitoringService extends EventEmitter {
       );
     }, this.ALERT_CHECK_INTERVAL_MS);
 
-    console.log(`[MonitoringService] Started (collection: ${this.COLLECTION_INTERVAL_MS}ms, alerts: ${this.ALERT_CHECK_INTERVAL_MS}ms)`);
+    // Daily cleanup of old data
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup().catch(err =>
+        console.error('[MonitoringService] Cleanup failed:', err)
+      );
+    }, this.CLEANUP_INTERVAL_MS);
+
+    console.log(`[MonitoringService] Started (collection: ${this.COLLECTION_INTERVAL_MS}ms, alerts: ${this.ALERT_CHECK_INTERVAL_MS}ms, cleanup: daily)`);
   }
 
   /**
@@ -87,6 +96,11 @@ export class MonitoringService extends EventEmitter {
     if (this.alertInterval) {
       clearInterval(this.alertInterval);
       this.alertInterval = null;
+    }
+
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
     }
 
     this.isRunning = false;
@@ -449,12 +463,13 @@ export class MonitoringService extends EventEmitter {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    // Recent metrics
+    // Recent metrics - use parameterized query to prevent SQL injection
+    const hoursInterval = `-${Math.max(1, Math.min(168, parseInt(hours) || 1))} hours`; // Clamp to 1-168 hours (1 week)
     const metrics = db.prepare(`
       SELECT * FROM agent_metrics
-      WHERE agent_id = ? AND timestamp > datetime('now', '-${hours} hours')
+      WHERE agent_id = ? AND timestamp > datetime('now', ?)
       ORDER BY timestamp DESC
-    `).all(agentId);
+    `).all(agentId, hoursInterval);
 
     // Recent events
     const events = db.prepare(`
