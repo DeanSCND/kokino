@@ -215,6 +215,53 @@ class RestApiClient {
     return broker.waitForReply(ticketId);
   }
 
+  // Agent Configuration (Phase 2: Configurable Agents)
+
+  async listAgentConfigs(filters = {}) {
+    const params = new URLSearchParams(filters);
+    return this.request(`/api/agents?${params}`);
+  }
+
+  async getAgentConfig(configId) {
+    return this.request(`/api/agents/${configId}`);
+  }
+
+  async createAgentConfig(config) {
+    const response = await this.request('/api/agents', {
+      method: 'POST',
+      body: JSON.stringify(config)
+    });
+    return response.agent;
+  }
+
+  async updateAgentConfig(configId, updates) {
+    const response = await this.request(`/api/agents/${configId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+    return response.agent;
+  }
+
+  async deleteAgentConfig(configId) {
+    return this.request(`/api/agents/${configId}`, { method: 'DELETE' });
+  }
+
+  async cloneAgentConfig(configId, newName) {
+    const response = await this.request(`/api/agents/${configId}/clone`, {
+      method: 'POST',
+      body: JSON.stringify({ name: newName })
+    });
+    return response.agent;
+  }
+
+  async instantiateAgent(configId, agentName) {
+    const response = await this.request(`/api/agents/${configId}/instantiate`, {
+      method: 'POST',
+      body: JSON.stringify({ name: agentName })
+    });
+    return response.agent;
+  }
+
   // System
 
   async health() {
