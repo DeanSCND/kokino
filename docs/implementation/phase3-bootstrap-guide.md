@@ -16,15 +16,16 @@ This guide provides step-by-step instructions for implementing the Bootstrap Sys
 
 #### 1.1 Create Migration File
 
-Create `broker/src/db/migrations/004_add_bootstrap_tables.sql`:
+Create `broker/src/db/migrations/005_add_bootstrap_tables.sql`:
 
 ```sql
--- Add bootstrap fields to agents table
-ALTER TABLE agents ADD COLUMN bootstrap_mode TEXT DEFAULT 'auto';
-ALTER TABLE agents ADD COLUMN bootstrap_script TEXT;
-ALTER TABLE agents ADD COLUMN bootstrap_config JSON;
-ALTER TABLE agents ADD COLUMN last_bootstrap TEXT;
-ALTER TABLE agents ADD COLUMN bootstrap_count INTEGER DEFAULT 0;
+-- Add bootstrap fields to agent_configs table (not agents!)
+ALTER TABLE agent_configs ADD COLUMN last_bootstrap TEXT;
+ALTER TABLE agent_configs ADD COLUMN bootstrap_count INTEGER DEFAULT 0;
+
+-- Add bootstrap context storage to agents table (runtime instances)
+ALTER TABLE agents ADD COLUMN bootstrap_context TEXT;
+ALTER TABLE agents ADD COLUMN bootstrap_status TEXT DEFAULT 'pending';
 
 -- Create bootstrap history table
 CREATE TABLE bootstrap_history (
@@ -127,8 +128,18 @@ export class FileLoader {
     this.workingDir = workingDirectory;
   }
 
+  validatePath(filePath) {
+    // Prevent directory traversal attacks
+    const normalized = path.normalize(filePath);
+    if (normalized.includes('..') || path.isAbsolute(normalized)) {
+      throw new Error(`Invalid file path: ${filePath}`);
+    }
+    return normalized;
+  }
+
   async loadFile(filePath) {
-    const absolutePath = path.resolve(this.workingDir, filePath);
+    const safePath = this.validatePath(filePath);
+    const absolutePath = path.resolve(this.workingDir, safePath);
 
     try {
       const content = await fs.readFile(absolutePath, 'utf-8');
@@ -165,7 +176,7 @@ export class FileLoader {
     return results;
   }
 
-  async findClauldMd() {
+  async findClaudeMd() {
     // Check multiple locations for CLAUDE.md
     const locations = [
       'CLAUDE.md',
@@ -201,9 +212,9 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 export class BootstrapManager {
-  constructor(db, agentRegistry) {
+  constructor(db, agentService) {
     this.db = db;
-    this.registry = agentRegistry;
+    this.agentService = agentService;  // Use existing agent service
   }
 
   async bootstrapAgent(agentId, config) {
@@ -236,8 +247,8 @@ export class BootstrapManager {
       const duration = Date.now() - startTime;
       await this.recordBootstrapComplete(historyId, result, duration);
 
-      // Update agent status
-      await this.registry.updateAgentStatus(agentId, 'ready');
+      // Update agent bootstrap status
+      await this.updateBootstrapStatus(agentId, 'ready');
 
       return {
         success: true,
@@ -249,8 +260,8 @@ export class BootstrapManager {
       // Record failure
       await this.recordBootstrapError(historyId, error);
 
-      // Update agent status
-      await this.registry.updateAgentStatus(agentId, 'error');
+      // Update agent bootstrap status
+      await this.updateBootstrapStatus(agentId, 'error');
 
       throw error;
     }
@@ -266,7 +277,7 @@ export class BootstrapManager {
   }
 
   async bootstrapAuto(agentId, config) {
-    const agent = await this.registry.getAgent(agentId);
+    const agent = await this.getAgentInfo(agentId);
     const loader = new FileLoader(agent.workingDirectory);
 
     // Load files in order
@@ -289,7 +300,7 @@ export class BootstrapManager {
     // Manual mode waits for user trigger
     // This is called when user calls POST /api/agents/:id/bootstrap
 
-    const agent = await this.registry.getAgent(agentId);
+    const agent = await this.getAgentInfo(agentId);
     const loader = new FileLoader(agent.workingDirectory);
 
     const files = [];
@@ -311,9 +322,17 @@ export class BootstrapManager {
   }
 
   async bootstrapCustom(agentId, config) {
-    const agent = await this.registry.getAgent(agentId);
+    const agent = await this.getAgentInfo(agentId);
 
-    // Execute custom script
+    // Validate script safety (basic check - production needs more)
+    if (config.bootstrapScript.includes('rm -rf') ||
+        config.bootstrapScript.includes('sudo') ||
+        config.bootstrapScript.includes('>') ||  // No redirects
+        config.bootstrapScript.includes('|')) {  // No pipes
+      throw new Error('Bootstrap script contains forbidden commands');
+    }
+
+    // Execute custom script with limited permissions
     const { stdout, stderr } = await execAsync(config.bootstrapScript, {
       cwd: agent.workingDirectory,
       env: {
@@ -357,13 +376,46 @@ export class BootstrapManager {
   }
 
   async injectContext(agentId, context) {
-    // This would interact with the agent process to inject context
-    // For now, we'll store it and the agent will pick it up
-
+    // Store context in database for agent to read
     await this.db.run(
-      'UPDATE agents SET bootstrap_context = ? WHERE agent_id = ?',
-      [context, agentId]
+      'UPDATE agents SET bootstrap_context = ?, bootstrap_status = ? WHERE agent_id = ?',
+      [context, 'contexted', agentId]
     );
+
+    // Send context via tmux to Claude Code (if running)
+    try {
+      // Context is sent as a system message that Claude Code recognizes
+      const contextMessage = `<system-context>\n${context}\n</system-context>`;
+      await this.sendToAgent(agentId, contextMessage);
+    } catch (error) {
+      console.warn(`Could not send context directly to agent ${agentId}:`, error.message);
+      // Agent will read from DB on next interaction
+    }
+  }
+
+  async getAgentInfo(agentId) {
+    const agent = await this.db.get(
+      'SELECT * FROM agents WHERE agent_id = ?',
+      agentId
+    );
+    if (!agent) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+    return agent;
+  }
+
+  async updateBootstrapStatus(agentId, status) {
+    await this.db.run(
+      'UPDATE agents SET bootstrap_status = ? WHERE agent_id = ?',
+      [status, agentId]
+    );
+  }
+
+  async sendToAgent(agentId, message) {
+    // This would use tmux send-keys or similar mechanism
+    // Implementation depends on how agents are managed
+    // For now, this is a placeholder
+    console.log(`Would send to agent ${agentId}: ${message.substring(0, 50)}...`);
   }
 
   // Database operations
@@ -418,8 +470,8 @@ import { jsonResponse } from '../../utils/response.js';
 import { BootstrapManager } from '../../bootstrap/BootstrapManager.js';
 import { CompactionMonitor } from '../../bootstrap/CompactionMonitor.js';
 
-export function createBootstrapRoutes(db, agentRegistry) {
-  const bootstrapManager = new BootstrapManager(db, agentRegistry);
+export function createBootstrapRoutes(db, agentService) {
+  const bootstrapManager = new BootstrapManager(db, agentService);
   const compactionMonitor = new CompactionMonitor(db);
 
   return {
@@ -478,7 +530,7 @@ export function createBootstrapRoutes(db, agentRegistry) {
         const { agentId } = req.params;
 
         // Get agent config
-        const agent = await agentRegistry.getAgent(agentId);
+        const agent = await db.get('SELECT * FROM agents WHERE agent_id = ?', agentId);
 
         // Re-run bootstrap with current mode
         const result = await bootstrapManager.bootstrapAgent(
@@ -516,8 +568,9 @@ Add to `broker/src/index.js`:
 import { createBootstrapRoutes } from './api/routes/bootstrap.js';
 
 // After other route registrations
-const bootstrapRoutes = createBootstrapRoutes(db, agentRegistry);
+const bootstrapRoutes = createBootstrapRoutes(db, agentService);
 
+// Note: These are under /api prefix already via apiRouter
 apiRouter.post('/agents/:agentId/bootstrap', bootstrapRoutes.triggerBootstrap);
 apiRouter.get('/agents/:agentId/bootstrap/status', bootstrapRoutes.getBootstrapStatus);
 apiRouter.post('/agents/:agentId/bootstrap/reload', bootstrapRoutes.reloadBootstrap);
@@ -651,19 +704,19 @@ import { FileLoader } from '../src/bootstrap/FileLoader.js';
 describe('BootstrapManager', () => {
   let manager;
   let mockDb;
-  let mockRegistry;
+  let mockAgentService;
 
   beforeEach(() => {
     mockDb = {
-      run: jest.fn(),
-      get: jest.fn(),
-      all: jest.fn()
+      run: vi.fn(),
+      get: vi.fn(),
+      all: vi.fn()
     };
-    mockRegistry = {
-      getAgent: jest.fn(),
-      updateAgentStatus: jest.fn()
+    mockAgentService = {
+      getAgent: vi.fn(),
+      updateStatus: vi.fn()
     };
-    manager = new BootstrapManager(mockDb, mockRegistry);
+    manager = new BootstrapManager(mockDb, mockAgentService);
   });
 
   describe('bootstrapNone', () => {
@@ -677,9 +730,9 @@ describe('BootstrapManager', () => {
 
   describe('bootstrapAuto', () => {
     it('should load configured files', async () => {
-      mockRegistry.getAgent.mockResolvedValue({
-        agentId: 'agent-123',
-        workingDirectory: '/project'
+      mockDb.get.mockResolvedValue({
+        agent_id: 'agent-123',
+        working_directory: '/project'
       });
 
       const config = {
@@ -864,6 +917,96 @@ sqlite3 kokino.db ".backup kokino-backup.db"
 # Rollback if needed
 git revert HEAD
 sqlite3 kokino.db ".restore kokino-backup.db"
+```
+
+## Context Delivery Mechanism
+
+### How Context Reaches Claude Code
+
+The bootstrap system delivers context to agents via multiple pathways:
+
+1. **Database Storage** (Primary)
+   - Context stored in `agents.bootstrap_context` column
+   - Agent reads on startup via broker API
+   - Persistent across restarts
+
+2. **Direct Injection** (When Running)
+   - Context sent via tmux send-keys as `<system-context>` message
+   - Claude Code recognizes this format
+   - Immediate availability
+
+3. **File-based** (Fallback)
+   - Context written to `.kokino/current-context.md`
+   - Agent can read if other methods fail
+   - Useful for debugging
+
+### Agent Bootstrap Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant UI
+    participant Broker
+    participant DB
+    participant Agent
+
+    UI->>Broker: POST /api/agents/:id/bootstrap
+    Broker->>DB: Load agent config
+    Broker->>Broker: Load files based on mode
+    Broker->>DB: Store context
+    Broker->>Agent: Send <system-context> via tmux
+    Agent->>Agent: Process context
+    Agent->>Broker: Acknowledge ready
+    Broker->>UI: Return success
+```
+
+## Team Bootstrap Coordination
+
+### Bootstrapping Multiple Agents
+
+When working with teams, bootstrap order matters:
+
+```javascript
+// Bootstrap team in sequence
+async function bootstrapTeam(teamId) {
+  const team = await getTeam(teamId);
+
+  // 1. Bootstrap shared context
+  const sharedContext = await loadTeamContext(teamId);
+
+  // 2. Bootstrap root agent first
+  if (team.rootAgent) {
+    await bootstrapManager.bootstrapAgent(team.rootAgent, {
+      mode: 'auto',
+      additionalContext: sharedContext
+    });
+  }
+
+  // 3. Bootstrap team members with role-specific context
+  for (const member of team.members) {
+    await bootstrapManager.bootstrapAgent(member.agentId, {
+      mode: 'auto',
+      additionalContext: `${sharedContext}\nRole: ${member.role}`
+    });
+  }
+}
+```
+
+### Hot Reload Support
+
+Reload context without restarting agents:
+
+```javascript
+// POST /api/teams/:teamId/reload-context
+async function reloadTeamContext(teamId) {
+  const team = await getTeam(teamId);
+
+  // Reload all agents in parallel
+  const reloads = team.members.map(member =>
+    bootstrapManager.reloadBootstrap(member.agentId)
+  );
+
+  await Promise.all(reloads);
+}
 ```
 
 ## Troubleshooting
