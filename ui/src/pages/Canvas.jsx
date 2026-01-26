@@ -18,6 +18,7 @@ import { EscalationTracker } from '../utils/EscalationTracker';
 import { GraphEnforcer } from '../utils/GraphEnforcer';
 import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle, Library, Clock, Github } from 'lucide-react';
 import apiClient from '../services/api-client';
+import { AgentLibraryPanel } from '../components/agents/AgentLibraryPanel';
 import { GitHubIssues } from '../components/GitHubIssues';
 import { CreatePRDialog } from '../components/CreatePRDialog';
 import { BranchManager } from '../components/BranchManager';
@@ -96,9 +97,8 @@ export const Canvas = ({ setHeaderControls }) => {
     const [showStageCommit, setShowStageCommit] = useState(false);
     const [stageCommitAgent, setStageCommitAgent] = useState(null);
 
-    // Phase 2: Agent configs from API
-    const [agentConfigs, setAgentConfigs] = useState([]);
-    const [isLoadingConfigs, setIsLoadingConfigs] = useState(false);
+    // Phase 2: Agent Library Panel
+    const [showAgentLibrary, setShowAgentLibrary] = useState(false);
 
     // Phase 8: Loop detection state
     const loopDetectorRef = useRef(null);
@@ -199,9 +199,8 @@ export const Canvas = ({ setHeaderControls }) => {
         [edges, setEdges]
     );
 
-    // Add agent node to canvas - Reference: POC Canvas.jsx:24-45
-    // Phase 2: Updated to support both legacy roles and agent config IDs
-    const addNode = async (roleOrConfigId) => {
+    // Add agent node to canvas - Phase 2: Instantiate from config ID
+    const addNode = async (configId) => {
         setIsAddingAgent(true);
         setOperationError(null);
 
@@ -209,35 +208,23 @@ export const Canvas = ({ setHeaderControls }) => {
             // Use browser's crypto API with fallback for older environments
             const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-            // Check if this is a config ID or legacy role
-            const config = agentConfigs.find(c => c.id === roleOrConfigId);
-            const role = config ? config.role : roleOrConfigId;
-            const cliType = config ? config.cliType : 'claude-code';
+            // Fetch config to get agent details
+            const config = await apiClient.getAgentConfig(configId);
 
-            // Smart agent naming - supports multi-model orchestration
-            // Reference: POC Canvas.jsx:26-31
-            let baseName = role === 'Product Manager' ? 'Alice' :
-                role === 'Tech Lead' ? 'Bob' :
-                role === 'Backend' ? 'Jerry' :
-                role === 'Droid' ? 'Steve' :    // Factory Droid
-                role === 'Gemini' ? 'Gemma' :   // Google Gemini
-                config ? config.name : `Agent-${id.substring(0, 4)}`;
-
-            // Check for duplicates and auto-increment name
+            // Generate agent name with duplicate checking
             const existingNames = nodes.map(n => n.data.name);
-            let name = baseName;
+            let name = config.name;
             let counter = 2;
             while (existingNames.includes(name)) {
-                name = `${baseName}-${counter}`;
+                name = `${config.name}-${counter}`;
                 counter++;
             }
 
-            if (name !== baseName) {
-                console.log(`[canvas] Agent name ${baseName} already exists, using ${name} instead`);
+            if (name !== config.name) {
+                console.log(`[canvas] Agent name ${config.name} already exists, using ${name} instead`);
             }
 
             // Grid positioning to avoid overlaps
-            // Improvement over POC's random positioning
             const gridSpacing = 350; // Node width + margin
             const col = nodes.length % 3;
             const row = Math.floor(nodes.length / 3);
@@ -251,9 +238,9 @@ export const Canvas = ({ setHeaderControls }) => {
                 },
                 data: {
                     name: name,
-                    role: role,
+                    role: config.role,
                     status: 'registering',
-                    task: config ? 'Instantiating from config...' : 'Registering with apiClient...',
+                    task: 'Instantiating from config...',
                     onDelete: handleDeleteAgent
                 }
             };
@@ -261,21 +248,10 @@ export const Canvas = ({ setHeaderControls }) => {
             // Optimistic UI update
             setNodes((nds) => nds.concat(newNode));
 
-            // Phase 2: If using a config, instantiate from it; otherwise register directly
-            let result;
-            if (config) {
-                console.log(`[canvas] Instantiating agent ${name} from config ${config.id}...`);
-                result = await apiClient.instantiateAgent(config.id, name);
-                console.log(`[canvas] ✓ Instantiated agent ${name}:`, result);
-            } else {
-                console.log(`[canvas] Attempting to register agent ${name} with API...`);
-                result = await apiClient.registerAgent(name, {
-                    type: cliType,
-                    metadata: { role, nodeId: id, commMode: 'headless' },
-                    heartbeatIntervalMs: 30000
-                });
-                console.log(`[canvas] ✓ Registered agent ${name} with apiClient:`, result);
-            }
+            // Instantiate agent from config
+            console.log(`[canvas] Instantiating agent ${name} from config ${config.id}...`);
+            const result = await apiClient.instantiateAgent(config.id, name);
+            console.log(`[canvas] ✓ Instantiated agent ${name}:`, result);
 
             // Update node status after successful registration
             setNodes(nds => nds.map(n =>
@@ -285,7 +261,7 @@ export const Canvas = ({ setHeaderControls }) => {
             ));
 
         } catch (error) {
-            console.error(`[canvas] ✗ Failed to register agent:`, error);
+            console.error(`[canvas] ✗ Failed to instantiate agent:`, error);
             setOperationError(`Failed to add agent: ${error.message}`);
 
             // Remove the failed node after a delay
@@ -670,25 +646,6 @@ export const Canvas = ({ setHeaderControls }) => {
             }
         }
     }, [contextMenu]);
-
-    // Phase 2: Load agent configs from API
-    useEffect(() => {
-        const loadConfigs = async () => {
-            setIsLoadingConfigs(true);
-            try {
-                const configs = await apiClient.listAgentConfigs();
-                console.log(`[canvas] Loaded ${configs.length} agent configs from API`);
-                setAgentConfigs(configs);
-            } catch (error) {
-                console.error('[canvas] Failed to load agent configs:', error);
-                setAgentConfigs([]); // Fallback to empty array
-            } finally {
-                setIsLoadingConfigs(false);
-            }
-        };
-
-        loadConfigs();
-    }, []);
 
     // Phase 3: Load team from localStorage on mount
     useEffect(() => {
@@ -1309,71 +1266,20 @@ export const Canvas = ({ setHeaderControls }) => {
                             Commit Queue
                         </button>
 
-                        {/* Phase 2: Dynamic agent config buttons */}
-                        <div className="grid grid-cols-2 gap-2">
-                            {isLoadingConfigs ? (
-                                <div className="col-span-2 text-center py-4">
-                                    <Loader2 size={20} className="animate-spin text-accent-purple mx-auto" />
-                                    <p className="text-xs text-text-secondary mt-2">Loading agent configs...</p>
-                                </div>
-                            ) : agentConfigs.length > 0 ? (
-                                agentConfigs.slice(0, 12).map((config) => (
-                                    <button
-                                        key={config.id}
-                                        onClick={() => addNode(config.id)}
-                                        disabled={isAddingAgent}
-                                        className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-colors ${
-                                            isAddingAgent
-                                                ? 'border-border bg-background/50 cursor-not-allowed opacity-50'
-                                                : 'border-border bg-background hover:border-text-secondary group cursor-pointer'
-                                        }`}
-                                        title={config.systemPrompt || config.role}
-                                    >
-                                        <div className={`w-8 h-8 rounded-full bg-surface mb-2 flex items-center justify-center transition-colors ${
-                                            !isAddingAgent && 'group-hover:bg-accent-purple/20'
-                                        }`}>
-                                            <Plus size={16} className={`text-text-secondary ${
-                                                !isAddingAgent && 'group-hover:text-accent-purple'
-                                            }`} />
-                                        </div>
-                                        <span className="text-[10px] text-text-secondary uppercase tracking-wide font-medium text-center line-clamp-2">
-                                            {config.name}
-                                        </span>
-                                    </button>
-                                ))
-                            ) : (
-                                // Fallback to legacy hardcoded roles if no configs loaded
-                                ['Product Manager', 'Tech Lead', 'Frontend', 'Backend', 'QA', 'Droid', 'Gemini'].map((role) => (
-                                    <button
-                                        key={role}
-                                        onClick={() => addNode(role)}
-                                        disabled={isAddingAgent}
-                                        className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-colors ${
-                                            isAddingAgent
-                                                ? 'border-border bg-background/50 cursor-not-allowed opacity-50'
-                                                : 'border-border bg-background hover:border-text-secondary group cursor-pointer'
-                                        }`}
-                                    >
-                                        <div className={`w-8 h-8 rounded-full bg-surface mb-2 flex items-center justify-center transition-colors ${
-                                            !isAddingAgent && 'group-hover:bg-accent-purple/20'
-                                        }`}>
-                                            <Plus size={16} className={`text-text-secondary ${
-                                                !isAddingAgent && 'group-hover:text-accent-purple'
-                                            }`} />
-                                        </div>
-                                        <span className="text-[10px] text-text-secondary uppercase tracking-wide font-medium text-center">
-                                            {role}
-                                        </span>
-                                    </button>
-                                ))
-                            )}
-                            </div>
+                        {/* Phase 2: Agent Library Button */}
+                        <button
+                            onClick={() => setShowAgentLibrary(true)}
+                            className="w-full px-4 py-3 bg-accent-purple hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                            <Library size={18} />
+                            Open Agent Library
+                        </button>
 
-                            {/* Agent count badge */}
-                            <div className="bg-surface/60 border border-border p-3 rounded-lg text-center mt-2">
-                                <div className="text-2xl font-bold text-text-primary">{nodes.length}</div>
-                                <div className="text-xs text-text-secondary">Agents</div>
-                            </div>
+                        {/* Agent count badge */}
+                        <div className="bg-surface/60 border border-border p-3 rounded-lg text-center mt-2">
+                            <div className="text-2xl font-bold text-text-primary">{nodes.length}</div>
+                            <div className="text-xs text-text-secondary">Agents</div>
+                        </div>
                         </div>
                     </div>
                     </div>
@@ -1618,6 +1524,14 @@ export const Canvas = ({ setHeaderControls }) => {
                             setStageCommitAgent(null);
                         }}
                         agentName={stageCommitAgent}
+                    />
+                )}
+
+                {/* Phase 2: Agent Library Panel */}
+                {showAgentLibrary && (
+                    <AgentLibraryPanel
+                        onClose={() => setShowAgentLibrary(false)}
+                        onAddAgent={(configId) => addNode(configId)}
                     />
                 )}
 
