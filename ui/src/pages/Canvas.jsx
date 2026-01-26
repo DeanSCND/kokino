@@ -24,6 +24,7 @@ import * as canvasStorage from '../services/storage/canvasStorage';
 import { useUIStore } from '../stores/useUIStore';
 import { useAgentStore } from '../stores/useAgentStore';
 import { AgentLibraryPanel } from '../components/agents/AgentLibraryPanel';
+import { TeamManager } from '../components/TeamManager';
 import { GitHubIssues } from '../components/GitHubIssues';
 import { CreatePRDialog } from '../components/CreatePRDialog';
 import { BranchManager } from '../components/BranchManager';
@@ -1535,6 +1536,24 @@ export const Canvas = ({ setHeaderControls }) => {
                         onClose={() => setShowAgentLibrary(false)}
                         onAddAgent={(configId) => addNode(configId)}
                     />
+                )}
+
+                {/* Phase 5: Team Manager Panel */}
+                {showTeamPanel && (
+                    <div className="fixed inset-y-0 right-0 w-96 bg-white dark:bg-gray-900 shadow-xl z-50 overflow-y-auto">
+                        <div className="flex justify-between items-center p-4 border-b">
+                            <h2 className="text-lg font-semibold">Team Management</h2>
+                            <button
+                                onClick={() => setShowTeamPanel(false)}
+                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div className="p-4">
+                            <TeamManager projectId={null} />
+                        </div>
+                    </div>
                 )}
 
                 {/* Phase 8: Loop Detection Alerts */}
