@@ -314,6 +314,52 @@ class RestApiClient {
     return broker.resetCompactionMetrics(agentId);
   }
 
+  // Monitoring System (Phase 6)
+
+  async getMonitoringDashboard() {
+    return this.request('/api/monitoring/dashboard');
+  }
+
+  async getAgentDashboard(agentId, hours = 1) {
+    return this.request(`/api/monitoring/agents/${agentId}?hours=${hours}`);
+  }
+
+  async getMetrics(filters = {}) {
+    const params = new URLSearchParams(filters);
+    const queryString = params.toString();
+    return this.request(`/api/monitoring/metrics${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getEvents(filters = {}) {
+    const params = new URLSearchParams(filters);
+    const queryString = params.toString();
+    return this.request(`/api/monitoring/events${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getErrors(filters = {}) {
+    const params = new URLSearchParams(filters);
+    const queryString = params.toString();
+    return this.request(`/api/monitoring/errors${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async resolveError(errorId, resolvedBy) {
+    return this.request(`/api/monitoring/errors/${errorId}/resolve`, {
+      method: 'PATCH',
+      body: JSON.stringify({ resolvedBy })
+    });
+  }
+
+  async triggerCleanup(daysToKeep = 7) {
+    return this.request('/api/monitoring/cleanup', {
+      method: 'POST',
+      body: JSON.stringify({ daysToKeep })
+    });
+  }
+
+  async getMonitoringStatus() {
+    return this.request('/api/monitoring/status');
+  }
+
   // System
 
   async health() {
