@@ -179,6 +179,12 @@ export class MonitoringService extends EventEmitter {
    * @returns {Promise<Object>} {cpu: number, memory: number}
    */
   async getProcessMetrics(pid) {
+    // Validate PID is a safe integer to prevent command injection
+    if (!Number.isInteger(pid) || pid <= 0) {
+      console.warn(`[MonitoringService] Invalid PID: ${pid}`);
+      return { cpu: 0, memory: 0 };
+    }
+
     try {
       if (process.platform === 'darwin') {
         // macOS - use ps command
