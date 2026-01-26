@@ -137,9 +137,7 @@ export const EditAgentDialog = ({ agentId, onClose, onSuccess }) => {
       newErrors.bootstrapScript = 'Bootstrap script must be 5000 characters or less';
     }
 
-    if (formData.capabilities.length === 0) {
-      newErrors.capabilities = 'At least one capability must be selected';
-    }
+    // Capabilities validation removed - reserved for future use
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
