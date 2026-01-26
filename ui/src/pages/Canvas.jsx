@@ -751,14 +751,80 @@ export const Canvas = ({ setHeaderControls }) => {
 
             console.log(`[orchestration] Starting with agents: ${agentNames.join(', ')}`);
 
-            // Start all agents (spawn tmux sessions)
-            console.log(`[orchestration] Starting agents in tmux...`);
-            for (const agentName of agentNames) {
+            // Phase 5: Multi-agent teams use Teams API, single agents use direct start
+            if (agentNames.length >= 2) {
+                console.log(`[orchestration] Detected team scenario (${agentNames.length} agents), using Teams API...`);
+
+                try {
+                    // Fetch agent configs to get their IDs
+                    const agentConfigsResponse = await fetch('http://127.0.0.1:5050/api/agents');
+                    const allConfigs = await agentConfigsResponse.json();
+
+                    // Map agent names to config IDs
+                    const agentConfigIds = agentNames.map(name => {
+                        const config = allConfigs.find(c => c.name === name);
+                        if (!config) {
+                            throw new Error(`Agent config not found: ${name}`);
+                        }
+                        return config.id;
+                    });
+
+                    // Create ephemeral team for this orchestration
+                    const teamName = `Canvas-${Date.now()}`;
+                    console.log(`[orchestration] Creating team: ${teamName}`);
+
+                    const createResponse = await fetch('http://127.0.0.1:5050/api/teams', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: teamName,
+                            description: 'Ephemeral team created by Canvas orchestration',
+                            agents: agentConfigIds
+                        })
+                    });
+
+                    if (!createResponse.ok) {
+                        const error = await createResponse.json();
+                        throw new Error(error.error || 'Failed to create team');
+                    }
+
+                    const { team } = await createResponse.json();
+                    console.log(`[orchestration] ✓ Team created: ${team.id}`);
+
+                    // Start the team
+                    console.log(`[orchestration] Starting team...`);
+                    const startResponse = await fetch(`http://127.0.0.1:5050/api/teams/${team.id}/start`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (!startResponse.ok) {
+                        const error = await startResponse.json();
+                        throw new Error(error.error || 'Failed to start team');
+                    }
+
+                    const startResult = await startResponse.json();
+                    console.log(`[orchestration] ✓ Team started: ${startResult.agentCount} agents running`);
+
+                    // Store team ID for cleanup
+                    window.__currentTeamId = team.id;
+
+                } catch (error) {
+                    console.error(`[orchestration] ✗ Team startup failed:`, error.message);
+                    setIsOrchestrating(false);
+                    return;
+                }
+            } else {
+                // Single agent: use legacy direct start
+                console.log(`[orchestration] Single agent mode, using direct start...`);
+                const agentName = agentNames[0];
                 try {
                     const result = await agentService.startAgent(agentName);
                     console.log(`[orchestration] ✓ Started ${agentName} in session ${result.tmux}`);
                 } catch (error) {
                     console.error(`[orchestration] ✗ Failed to start ${agentName}:`, error.message);
+                    setIsOrchestrating(false);
+                    return;
                 }
             }
 
@@ -856,7 +922,21 @@ export const Canvas = ({ setHeaderControls }) => {
                 }
             }
 
-            // Orchestration complete
+            // Orchestration complete - cleanup team if it was created
+            if (window.__currentTeamId && agentNames.length >= 2) {
+                console.log(`[orchestration] Stopping team ${window.__currentTeamId}...`);
+                try {
+                    await fetch(`http://127.0.0.1:5050/api/teams/${window.__currentTeamId}/stop`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    console.log(`[orchestration] ✓ Team stopped`);
+                    window.__currentTeamId = null;
+                } catch (error) {
+                    console.error(`[orchestration] Failed to stop team:`, error.message);
+                }
+            }
+
             setIsOrchestrating(false);
             setStepMode(false);
             currentStepRef.current = 0;
@@ -866,7 +946,14 @@ export const Canvas = ({ setHeaderControls }) => {
 
         // Cleanup on unmount or stop
         return () => {
-            // Future: cancel pending requests
+            // Stop team if orchestration is interrupted
+            if (window.__currentTeamId) {
+                fetch(`http://127.0.0.1:5050/api/teams/${window.__currentTeamId}/stop`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                }).catch(err => console.error('[orchestration] Cleanup failed:', err));
+                window.__currentTeamId = null;
+            }
         };
     }, [isOrchestrating, nodes, edges, isPaused, stepMode, setChatMessages, setNodes]);
 
