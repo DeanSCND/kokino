@@ -22,13 +22,9 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
           return jsonResponse(res, 400, { error: 'agentId required' });
         }
 
-        // Auto-detect commMode based on CLI type if not explicitly set
-        // Supported headless CLIs: claude-code, factory-droid, gemini
-        const supportedHeadlessCLIs = ['claude-code', 'factory-droid', 'gemini'];
-        const defaultCommMode = supportedHeadlessCLIs.includes(type) ? 'headless' : 'tmux';
-
-        // Use explicit commMode from metadata, or fall back to auto-detected default
-        const commMode = metadata.commMode || defaultCommMode;
+        // Use explicit commMode from metadata, default to 'tmux' for backwards compatibility
+        // Headless mode must be explicitly requested to avoid breaking existing tmux agents
+        const commMode = metadata.commMode || 'tmux';
 
         // Merge commMode into metadata
         const enrichedMetadata = {
@@ -180,36 +176,6 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
 
     // Lifecycle endpoints
 
-    // POST /agents/:agentId/start
-    async start(req, res, agentId) {
-      try {
-        const record = registry.get(agentId);
-        if (!record) {
-          return jsonResponse(res, 404, { error: 'Agent not found' });
-        }
-
-        // Spawn tmux session with mock agent
-        const role = record.metadata?.role || 'Developer';
-        const spawnResult = spawnAgentInTmux(agentId, role);
-
-        if (spawnResult.success) {
-          // Update status to online
-          registry.start(agentId);
-          jsonResponse(res, 200, {
-            status: 'started',
-            agent: record,
-            tmux: spawnResult.session,
-            created: spawnResult.created
-          });
-        } else {
-          jsonResponse(res, 500, { error: 'Failed to spawn agent', details: spawnResult.error });
-        }
-      } catch (error) {
-        console.error(`[agents/${agentId}/start] Error:`, error);
-        jsonResponse(res, 500, { error: error.message });
-      }
-    },
-
     // POST /agents/:agentId/stop
     async stop(req, res, agentId) {
       try {
@@ -323,29 +289,61 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
       }
     },
 
-    // POST /agents/:agentId/start - Bootstrap agent (Issue #110 + Phase 3)
+    // POST /agents/:agentId/start - Unified tmux/headless startup with bootstrap (Issue #110 + Phase 3)
     async start(req, res, agentId) {
       try {
-        if (!agentRunner) {
-          return jsonResponse(res, 503, { error: 'AgentRunner not available' });
-        }
-
         const agent = registry.get(agentId);
         if (!agent) {
           return jsonResponse(res, 404, { error: 'Agent not found' });
         }
+
+        // Determine comm mode from agent metadata
+        const commMode = agent.metadata?.commMode || agent.commMode || 'tmux';
 
         // Check if already started
         if (agent.status === 'ready' || agent.status === 'busy') {
           return jsonResponse(res, 200, {
             status: agent.status,
             message: 'Agent already started',
-            sessionId: null
+            sessionId: null,
+            commMode
           });
         }
 
-        // Update status to 'starting'
-        registry.updateStatus(agentId, 'starting');
+        // TMUX MODE: Spawn tmux session
+        if (commMode === 'tmux') {
+          const role = agent.metadata?.role || 'Developer';
+          const spawnResult = spawnAgentInTmux(agentId, role);
+
+          if (spawnResult.success) {
+            registry.start(agentId);
+            return jsonResponse(res, 200, {
+              status: 'started',
+              agent,
+              tmux: spawnResult.session,
+              created: spawnResult.created,
+              commMode: 'tmux'
+            });
+          } else {
+            return jsonResponse(res, 500, {
+              error: 'Failed to spawn tmux agent',
+              details: spawnResult.error,
+              commMode: 'tmux'
+            });
+          }
+        }
+
+        // HEADLESS MODE: Run bootstrap and execute warmup
+        if (commMode === 'headless' || commMode === 'shadow') {
+          if (!agentRunner) {
+            return jsonResponse(res, 503, {
+              error: 'AgentRunner not available for headless mode',
+              commMode
+            });
+          }
+
+          // Update status to 'starting'
+          registry.updateStatus(agentId, 'starting');
 
         // Phase 3: Get agent config and bootstrap configuration
         let bootstrapConfig = { ...DEFAULT_BOOTSTRAP_CONFIG };
@@ -396,7 +394,7 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
           // Update status to 'ready'
           registry.updateStatus(agentId, 'ready');
 
-          jsonResponse(res, 200, {
+          return jsonResponse(res, 200, {
             status: 'ready',
             sessionId: result.metadata?.sessionId,
             bootstrapTime: result.durationMs,
@@ -406,12 +404,21 @@ export function createAgentRoutes(registry, ticketStore, messageRepository = nul
               contextSize: bootstrapResult.contextSize || 0,
               duration: bootstrapResult.duration || 0
             } : null,
-            response: result.content
+            response: result.content,
+            commMode
           });
         } catch (error) {
           registry.updateStatus(agentId, 'error', error.message);
           throw error;
         }
+        }
+
+        // Unknown comm mode
+        return jsonResponse(res, 400, {
+          error: `Unknown commMode: ${commMode}`,
+          validModes: ['tmux', 'headless', 'shadow']
+        });
+
       } catch (error) {
         console.error(`[agents/${agentId}/start] Error:`, error);
         jsonResponse(res, 500, { error: error.message });
