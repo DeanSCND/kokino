@@ -1,80 +1,98 @@
 /**
  * Team Service - Team composition and management
- * Phase 4a: Service Layer Foundation
+ * Phase 5: Full Teams API Integration
  *
- * ⚠️ CRITICAL: Backend /api/teams/* endpoints do NOT exist yet.
- * All save/load/delete methods are DISABLED and throw errors.
- * Use teamStorage (localStorage) directly until backend routes are implemented.
- *
- * TODO Phase 5: Implement /api/teams routes in broker:
- *   - POST /api/teams (save)
- *   - GET /api/teams/:id (load)
- *   - PUT /api/teams/:id (update)
- *   - DELETE /api/teams/:id (delete)
- *   - GET /api/teams (list)
+ * Provides methods for team CRUD, lifecycle management, and orchestration.
+ * Backend endpoints implemented at /api/teams/*
  */
 
 import client from './client.js';
 
 class TeamService {
   /**
-   * Save team configuration
-   * ⚠️ DISABLED: Backend endpoint does not exist
-   * Use teamStorage.save() directly
+   * Create new team configuration
    */
-  async save(teamData) {
+  async create(teamData) {
     const validated = this.validate(teamData);
     if (!validated.valid) {
       throw new Error(`Invalid team: ${validated.errors.join(', ')}`);
     }
 
-    // Backend route not implemented yet
-    throw new Error('Backend /api/teams not implemented. Use teamStorage.save() instead.');
-    // return client.post('/api/teams', teamData);
+    const response = await fetch('http://127.0.0.1:5050/api/teams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(teamData)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create team');
+    }
+
+    return response.json();
   }
 
   /**
-   * Load team configuration
-   * ⚠️ DISABLED: Backend endpoint does not exist
-   * Use teamStorage.load() directly
+   * Load team configuration by ID
    */
   async load(teamId) {
-    // Backend route not implemented yet
-    throw new Error('Backend /api/teams/:id not implemented. Use teamStorage.load() instead.');
-    // return client.get(`/api/teams/${teamId}`);
+    const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to load team');
+    }
+
+    return response.json();
   }
 
   /**
-   * List all teams
-   * ⚠️ DISABLED: Backend endpoint does not exist
-   * Use teamStorage.list() directly
+   * List all teams, optionally filtered by project
    */
   async list(filters = {}) {
-    // Backend route not implemented yet
-    throw new Error('Backend /api/teams not implemented. Use teamStorage.list() instead.');
-    // return client.get('/api/teams', { params: filters });
+    const params = new URLSearchParams(filters);
+    const response = await fetch(`http://127.0.0.1:5050/api/teams?${params}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to list teams');
+    }
+
+    return response.json();
   }
 
   /**
-   * Update team
-   * ⚠️ DISABLED: Backend endpoint does not exist
-   * Use teamStorage.save() directly
+   * Update existing team
    */
   async update(teamId, updates) {
-    // Backend route not implemented yet
-    throw new Error('Backend /api/teams/:id not implemented. Use teamStorage.save() instead.');
-    // return client.put(`/api/teams/${teamId}`, updates);
+    const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update team');
+    }
+
+    return response.json();
   }
 
   /**
    * Delete team
-   * ⚠️ DISABLED: Backend endpoint does not exist
-   * Use teamStorage.delete() directly
    */
   async delete(teamId) {
-    // Backend route not implemented yet
-    throw new Error('Backend /api/teams/:id not implemented. Use teamStorage.delete() instead.');
-    // return client.delete(`/api/teams/${teamId}`);
+    const response = await fetch(`http://127.0.0.1:5050/api/teams/${teamId}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok && response.status !== 204) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete team');
+    }
+
+    return null;
   }
 
   /**
