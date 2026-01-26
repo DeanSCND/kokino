@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { User, Activity, PauseCircle, WifiOff, AlertTriangle, Clock, XCircle, HelpCircle, Trash2, RefreshCw, CheckCircle, FileText } from 'lucide-react';
-import broker from '../services/broker';
+import apiClient from '../services/api-client';
 
 // Status styling map - from POC ui-observatory/src/components/AgentNode.jsx:6-11
 // Proven visual states with dual-cue system (color + icon)
@@ -68,8 +68,8 @@ export const AgentNode = ({ data, id }) => {
         const fetchStatus = async () => {
             try {
                 const [bootstrap, compaction] = await Promise.all([
-                    broker.getBootstrapStatus(agentId).catch(() => null),
-                    broker.getCompactionStatus(agentId).catch(() => null)
+                    apiClient.getBootstrapStatus(agentId).catch(() => null),
+                    apiClient.getCompactionStatus(agentId).catch(() => null)
                 ]);
                 setBootstrapStatus(bootstrap);
                 setCompactionStatus(compaction);
@@ -108,11 +108,11 @@ export const AgentNode = ({ data, id }) => {
 
         setIsReloading(true);
         try {
-            await broker.reloadBootstrap(agentId);
+            await apiClient.reloadBootstrap(agentId);
             // Refresh status immediately after reload
             const [bootstrap, compaction] = await Promise.all([
-                broker.getBootstrapStatus(agentId).catch(() => null),
-                broker.getCompactionStatus(agentId).catch(() => null)
+                apiClient.getBootstrapStatus(agentId).catch(() => null),
+                apiClient.getCompactionStatus(agentId).catch(() => null)
             ]);
             setBootstrapStatus(bootstrap);
             setCompactionStatus(compaction);
