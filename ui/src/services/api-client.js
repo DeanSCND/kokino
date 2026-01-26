@@ -218,8 +218,17 @@ class RestApiClient {
   // Agent Configuration (Phase 2: Configurable Agents)
 
   async listAgentConfigs(filters = {}) {
-    const params = new URLSearchParams(filters);
-    return this.request(`/api/agents?${params}`);
+    // Clean up filters - only include defined values
+    const cleanFilters = {};
+    Object.keys(filters).forEach(key => {
+      if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
+        cleanFilters[key] = filters[key];
+      }
+    });
+
+    const params = new URLSearchParams(cleanFilters);
+    const queryString = params.toString();
+    return this.request(`/api/agents${queryString ? `?${queryString}` : ''}`);
   }
 
   async getAgentConfig(configId) {
