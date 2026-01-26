@@ -20,14 +20,18 @@ export function createAgentConfigRoutes(registry) {
     listAgents: (req, res) => {
       try {
         const url = new URL(req.url, `http://${req.headers.host}`);
-        let projectId = url.searchParams.get('projectId') || url.searchParams.get('project_id');
+        const projectIdParam = url.searchParams.get('projectId') || url.searchParams.get('project_id');
         const role = url.searchParams.get('role');
         const capability = url.searchParams.get('capability');
         const includeGlobal = url.searchParams.get('includeGlobal') === 'true';
 
-        // Convert string 'null' to actual null for global agents
-        if (projectId === 'null') {
-          projectId = null;
+        // Determine projectId filter:
+        // - No param: undefined (return ALL agents)
+        // - String 'null': null (return global agents only)
+        // - Any other value: that value (return project-specific agents)
+        let projectId = undefined;
+        if (projectIdParam !== null) {
+          projectId = projectIdParam === 'null' ? null : projectIdParam;
         }
 
         let configs;
