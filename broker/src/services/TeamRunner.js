@@ -17,6 +17,13 @@ export class TeamRunner {
     this.registry = agentRegistry;
     this.agentRunner = agentRunner;
     this.activeRuns = new Map(); // runId -> { teamId, agents: Map<agentId, process> }
+
+    // Phase 6: Completion detection
+    this.IDLE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes of inactivity
+    this.completionCheckInterval = null;
+
+    // Start completion checker
+    this.startCompletionChecker();
   }
 
   /**
@@ -46,10 +53,11 @@ export class TeamRunner {
     console.log(`[TeamRunner] Starting team "${team.name}" (${team.agents.length} agents)`);
 
     // Create run record
+    const now = new Date().toISOString();
     db.prepare(`
-      INSERT INTO team_runs (id, team_id, status, started_at)
-      VALUES (?, ?, ?, ?)
-    `).run(runId, teamId, 'running', new Date().toISOString());
+      INSERT INTO team_runs (id, team_id, status, started_at, last_activity_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(runId, teamId, 'running', now, now);
 
     try {
       // Get agent configurations
@@ -418,6 +426,139 @@ export class TeamRunner {
     }
 
     return results;
+  }
+
+  /**
+   * Phase 6: Update last activity timestamp for a team run
+   * Call this whenever an agent in the team executes
+   * @param {string} teamId - Team ID
+   */
+  updateTeamActivity(teamId) {
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      UPDATE team_runs
+      SET last_activity_at = ?
+      WHERE team_id = ? AND status = 'running'
+    `).run(now, teamId);
+
+    console.log(`[TeamRunner] Activity updated for team ${teamId}`);
+  }
+
+  /**
+   * Phase 6: Check if teams are idle and mark as completed
+   * Runs periodically via interval
+   */
+  async checkForCompletedTeams() {
+    const now = Date.now();
+
+    const runningTeams = db.prepare(`
+      SELECT id, team_id, last_activity_at
+      FROM team_runs
+      WHERE status = 'running'
+    `).all();
+
+    for (const run of runningTeams) {
+      // Skip if no activity timestamp yet
+      if (!run.last_activity_at) {
+        continue;
+      }
+
+      const lastActivity = new Date(run.last_activity_at).getTime();
+      const idleTime = now - lastActivity;
+
+      // If idle longer than threshold, mark as completed
+      if (idleTime > this.IDLE_THRESHOLD_MS) {
+        console.log(`[TeamRunner] Team ${run.team_id} idle for ${Math.floor(idleTime / 1000)}s, marking as completed`);
+
+        db.prepare(`
+          UPDATE team_runs
+          SET status = 'completed', completed_at = ?
+          WHERE id = ?
+        `).run(new Date().toISOString(), run.id);
+
+        // Remove from active runs
+        this.activeRuns.delete(run.id);
+      }
+    }
+  }
+
+  /**
+   * Phase 6: Start periodic completion checker
+   */
+  startCompletionChecker() {
+    if (this.completionCheckInterval) {
+      return; // Already running
+    }
+
+    // Check every 30 seconds
+    this.completionCheckInterval = setInterval(() => {
+      this.checkForCompletedTeams();
+    }, 30000);
+
+    console.log('[TeamRunner] Completion checker started (checks every 30s)');
+  }
+
+  /**
+   * Phase 6: Stop completion checker (for shutdown)
+   */
+  stopCompletionChecker() {
+    if (this.completionCheckInterval) {
+      clearInterval(this.completionCheckInterval);
+      this.completionCheckInterval = null;
+      console.log('[TeamRunner] Completion checker stopped');
+    }
+  }
+
+  /**
+   * Phase 6: Get detailed status for a team run
+   * @param {string} runId - Run ID
+   * @returns {Object} Detailed run status
+   */
+  getRunStatus(runId) {
+    const run = db.prepare(`
+      SELECT tr.*, t.name as team_name
+      FROM team_runs tr
+      JOIN teams t ON tr.team_id = t.id
+      WHERE tr.id = ?
+    `).get(runId);
+
+    if (!run) {
+      throw new Error(`Run ${runId} not found`);
+    }
+
+    const agentPids = JSON.parse(run.agent_pids || '{}');
+    const agentIds = Object.keys(agentPids);
+
+    // Get current agent statuses from registry
+    const agentStatuses = {};
+    for (const agentId of agentIds) {
+      const agent = this.registry.get(agentId);
+      if (agent) {
+        agentStatuses[agentId] = agent.status;
+      }
+    }
+
+    // Calculate idle time if running
+    let idleTimeMs = null;
+    if (run.status === 'running' && run.last_activity_at) {
+      idleTimeMs = Date.now() - new Date(run.last_activity_at).getTime();
+    }
+
+    return {
+      runId: run.id,
+      teamId: run.team_id,
+      teamName: run.team_name,
+      status: run.status,
+      startedAt: run.started_at,
+      stoppedAt: run.stopped_at,
+      completedAt: run.completed_at,
+      lastActivityAt: run.last_activity_at,
+      idleTimeMs,
+      errorMessage: run.error_message,
+      agentCount: agentIds.length,
+      agents: agentStatuses
+    };
   }
 }
 

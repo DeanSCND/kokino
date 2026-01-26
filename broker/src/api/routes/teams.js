@@ -17,6 +17,11 @@ import { jsonResponse } from '../../utils/response.js';
 export function registerTeamRoutes(router, { registry, agentRunner }) {
   const teamRunner = new TeamRunner(registry, agentRunner);
 
+  // Phase 6: Hook up activity tracking callback
+  agentRunner.onExecutionComplete = (teamId, agentId) => {
+    teamRunner.updateTeamActivity(teamId);
+  };
+
   // On startup, clean up orphaned runs
   (async () => {
     try {
@@ -381,6 +386,28 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
       const statusCode = error.message.includes('not active') ? 404 : 500;
       jsonResponse(res, statusCode, {
         error: 'Failed to stop run',
+        message: error.message
+      });
+    }
+  });
+
+  /**
+   * GET /api/teams/runs/:runId/status
+   * Get detailed status for a specific team run (Phase 6)
+   */
+  router.get('/teams/runs/:runId/status', async (req, res) => {
+    try {
+      const { runId } = req.params;
+
+      const status = teamRunner.getRunStatus(runId);
+
+      jsonResponse(res, 200, status);
+    } catch (error) {
+      console.error('[Teams API] Error getting run status:', error);
+
+      const statusCode = error.message.includes('not found') ? 404 : 500;
+      jsonResponse(res, statusCode, {
+        error: 'Failed to get run status',
         message: error.message
       });
     }
