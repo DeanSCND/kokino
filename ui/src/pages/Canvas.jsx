@@ -17,7 +17,10 @@ import { LoopDetector } from '../utils/LoopDetector';
 import { EscalationTracker } from '../utils/EscalationTracker';
 import { GraphEnforcer } from '../utils/GraphEnforcer';
 import { Plus, Play, Square, MessageSquare, Terminal as TerminalIcon, LayoutDashboard, Loader2, AlertCircle, Library, Clock, Github } from 'lucide-react';
-import apiClient from '../services/api-client';
+import * as agentService from '../services/api/agentService';
+import * as messageService from '../services/api/messageService';
+import * as configService from '../services/api/configService';
+import * as canvasStorage from '../services/storage/canvasStorage';
 import { AgentLibraryPanel } from '../components/agents/AgentLibraryPanel';
 import { GitHubIssues } from '../components/GitHubIssues';
 import { CreatePRDialog } from '../components/CreatePRDialog';
@@ -209,7 +212,7 @@ export const Canvas = ({ setHeaderControls }) => {
             const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
             // Fetch config to get agent details
-            const config = await apiClient.getAgentConfig(configId);
+            const config = await configService.getAgentConfig(configId);
 
             // Generate agent name with duplicate checking
             const existingNames = nodes.map(n => n.data.name);
@@ -251,7 +254,7 @@ export const Canvas = ({ setHeaderControls }) => {
 
             // Instantiate agent from config
             console.log(`[canvas] Instantiating agent ${name} from config ${config.id}...`);
-            const result = await apiClient.instantiateAgent(config.id, name);
+            const result = await configService.instantiateAgent(config.id, name);
             console.log(`[canvas] ✓ Instantiated agent ${name}:`, result);
 
             // Update node status after successful registration
@@ -292,17 +295,17 @@ export const Canvas = ({ setHeaderControls }) => {
 
             // Stop agent first (sets status to offline)
             try {
-                await apiClient.stopAgent(agentName);
+                await agentService.stopAgent(agentName);
                 console.log(`[canvas] ✓ Stopped agent ${agentName}`);
             } catch (error) {
                 console.error(`[canvas] Failed to stop ${agentName}:`, error);
                 // Continue anyway
             }
 
-            // Delete agent from apiClient registry
+            // Delete agent from registry
             try {
-                await apiClient.deleteAgent(agentName);
-                console.log(`[canvas] ✓ Deleted agent ${agentName} from apiClient`);
+                await agentService.deleteAgent(agentName);
+                console.log(`[canvas] ✓ Deleted agent ${agentName} from registry`);
             } catch (error) {
                 console.error(`[canvas] Failed to delete ${agentName}:`, error);
                 // Continue anyway - node is already removed from UI
@@ -310,7 +313,7 @@ export const Canvas = ({ setHeaderControls }) => {
 
             // Kill tmux session if it exists
             try {
-                await apiClient.killTmuxSession(agentName);
+                await agentService.killTmuxSession(agentName);
                 console.log(`[canvas] ✓ Killed tmux session for ${agentName}`);
             } catch (error) {
                 console.error(`[canvas] Failed to kill tmux session for ${agentName}:`, error);
@@ -360,9 +363,9 @@ export const Canvas = ({ setHeaderControls }) => {
 
                 newNodes.push(newNode);
 
-                // Register with apiClient
+                // Register with broker
                 try {
-                    await apiClient.registerAgent(agentDef.role, {
+                    await agentService.registerAgent(agentDef.role, {
                         type: agentDef.type || 'claude-code',
                         metadata: agentDef.metadata || {}
                     });
@@ -483,7 +486,7 @@ export const Canvas = ({ setHeaderControls }) => {
         }));
 
         try {
-            await apiClient.stopAgent(agentName);
+            await agentService.stopAgent(agentName);
             console.log(`[lifecycle] Stopped agent: ${agentName}`);
 
             // Update to final state
@@ -522,7 +525,7 @@ export const Canvas = ({ setHeaderControls }) => {
         }));
 
         try {
-            const result = await apiClient.startAgent(agentName);
+            const result = await agentService.startAgent(agentName);
             console.log(`[lifecycle] Started agent: ${agentName}`, result);
 
             // Issue #110: Update to ready state after successful bootstrap
@@ -561,7 +564,7 @@ export const Canvas = ({ setHeaderControls }) => {
         }));
 
         try {
-            await apiClient.restartAgent(agentName);
+            await agentService.restartAgent(agentName);
             console.log(`[lifecycle] Restarted agent: ${agentName}`);
 
             // Update to final state after a brief delay (restart takes ~100ms)
@@ -650,38 +653,33 @@ export const Canvas = ({ setHeaderControls }) => {
 
     // Phase 3: Load team from localStorage on mount
     useEffect(() => {
-        const savedTeam = localStorage.getItem('kokino-team-v1');
-        if (savedTeam) {
-            try {
-                const { nodes: savedNodes, edges: savedEdges } = JSON.parse(savedTeam);
-                if (savedNodes && savedNodes.length > 0) {
-                    const agentNames = savedNodes.map(n => n.data.name).join(', ');
-                    console.log(`[localStorage] Loading ${savedNodes.length} nodes (${agentNames}) and ${savedEdges?.length || 0} edges`);
+        const savedState = canvasStorage.loadCanvasState();
+        if (savedState) {
+            const { nodes: savedNodes, edges: savedEdges } = savedState;
+            if (savedNodes && savedNodes.length > 0) {
+                const agentNames = savedNodes.map(n => n.data.name).join(', ');
+                console.log(`[localStorage] Loading ${savedNodes.length} nodes (${agentNames}) and ${savedEdges?.length || 0} edges`);
 
-                    // Inject onDelete callback into loaded nodes
-                    const nodesWithCallbacks = savedNodes.map(node => ({
-                        ...node,
-                        data: {
-                            ...node.data,
-                            onDelete: handleDeleteAgent
-                        }
-                    }));
-                    // Inject onDelete callback into loaded edges
-                    const edgesWithCallbacks = (savedEdges || []).map(edge => ({
-                        ...edge,
-                        data: {
-                            ...edge.data,
-                            onDelete: handleDeleteEdge
-                        }
-                    }));
-                    setNodes(nodesWithCallbacks);
-                    setEdges(edgesWithCallbacks);
-                } else {
-                    console.log('[localStorage] No saved team found or empty');
-                }
-            } catch (err) {
-                console.error('[localStorage] Failed to load saved team:', err);
-                localStorage.removeItem('kokino-team-v1');
+                // Inject onDelete callback into loaded nodes
+                const nodesWithCallbacks = savedNodes.map(node => ({
+                    ...node,
+                    data: {
+                        ...node.data,
+                        onDelete: handleDeleteAgent
+                    }
+                }));
+                // Inject onDelete callback into loaded edges
+                const edgesWithCallbacks = (savedEdges || []).map(edge => ({
+                    ...edge,
+                    data: {
+                        ...edge.data,
+                        onDelete: handleDeleteEdge
+                    }
+                }));
+                setNodes(nodesWithCallbacks);
+                setEdges(edgesWithCallbacks);
+            } else {
+                console.log('[localStorage] No saved team found or empty');
             }
         } else {
             console.log('[localStorage] No saved data');
@@ -693,11 +691,11 @@ export const Canvas = ({ setHeaderControls }) => {
         if (nodes.length > 0 || edges.length > 0) {
             const agentNames = nodes.map(n => n.data.name).join(', ');
             console.log(`[localStorage] Saving ${nodes.length} nodes (${agentNames}) and ${edges.length} edges`);
-            localStorage.setItem('kokino-team-v1', JSON.stringify({ nodes, edges }));
+            canvasStorage.saveCanvasState({ nodes, edges });
         } else {
             console.log('[localStorage] Clearing - canvas is empty');
             // Clear localStorage when canvas is empty
-            localStorage.removeItem('kokino-team-v1');
+            canvasStorage.clearCanvasState();
         }
     }, [nodes, edges]);
 
@@ -746,7 +744,7 @@ export const Canvas = ({ setHeaderControls }) => {
             console.log(`[orchestration] Starting agents in tmux...`);
             for (const agentName of agentNames) {
                 try {
-                    const result = await apiClient.startAgent(agentName);
+                    const result = await agentService.startAgent(agentName);
                     console.log(`[orchestration] ✓ Started ${agentName} in session ${result.tmux}`);
                 } catch (error) {
                     console.error(`[orchestration] ✗ Failed to start ${agentName}:`, error.message);
@@ -792,7 +790,7 @@ export const Canvas = ({ setHeaderControls }) => {
                     }
 
                     try {
-                        const result = await apiClient.sendMessage(msg.to, {
+                        const result = await messageService.sendMessage(msg.to, {
                             payload: msg.content,
                             metadata: { origin: msg.from, timestamp: Date.now() }
                         });
@@ -857,17 +855,17 @@ export const Canvas = ({ setHeaderControls }) => {
 
         // Cleanup on unmount or stop
         return () => {
-            // Future: cancel pending apiClient requests
+            // Future: cancel pending requests
         };
     }, [isOrchestrating, nodes, edges, isPaused, stepMode, setChatMessages, setNodes]);
 
-    // Poll apiClient for agent status updates (continuous, not just during orchestration)
+    // Poll broker for agent status updates (continuous, not just during orchestration)
     useEffect(() => {
         const interval = setInterval(async () => {
             try {
-                const agents = await apiClient.listAgents({ status: 'online' });
+                const agents = await agentService.listAgents({ status: 'online' });
 
-                // Update node statuses from apiClient data
+                // Update node statuses from broker data
                 setNodes(nds => nds.map(node => {
                     const agentData = agents.find(a => a.agentId === node.data.name);
                     if (agentData) {
@@ -891,7 +889,7 @@ export const Canvas = ({ setHeaderControls }) => {
         return () => clearInterval(interval);
     }, [setNodes]);
 
-    // Poll apiClient for pending tickets (inbound messages)
+    // Poll broker for pending tickets (inbound messages)
     useEffect(() => {
         if (nodes.length === 0) return;
 
@@ -900,7 +898,7 @@ export const Canvas = ({ setHeaderControls }) => {
             for (const node of nodes) {
                 const agentName = node.data.name;
                 try {
-                    const pending = await apiClient.getPendingTickets(agentName);
+                    const pending = await messageService.getPendingTickets(agentName);
 
                     if (pending.length > 0) {
                         console.log(`[ticket-poll] ${agentName} has ${pending.length} pending tickets`);
