@@ -10,23 +10,46 @@ export const AgentLibraryPanel = ({ onClose, onAddAgent }) => {
   const [filters, setFilters] = useState({
     search: '',
     project: 'all',
-    type: 'all'
+    scope: 'all'  // 'all' | 'global' | 'project-specific'
   });
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState(null);
+  const [projects, setProjects] = useState([]);
 
   const LIMIT = 12;
+
+  // Load projects on mount
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        // TODO: Implement GET /api/projects endpoint
+        setProjects([{ id: 'default', name: 'Default Project' }]);
+      } catch (error) {
+        console.error('[AgentLibraryPanel] Failed to load projects:', error);
+      }
+    };
+    fetchProjects();
+  }, []);
 
   // Load agents
   const loadAgents = async (reset = false) => {
     setIsLoading(true);
     try {
       const queryParams = {};
-      if (filters.project !== 'all') queryParams.projectId = filters.project;
-      if (filters.type !== 'all') queryParams.cliType = filters.type;
+
+      // Handle scope filter
+      if (filters.scope === 'global') {
+        queryParams.projectId = null;
+      } else if (filters.scope === 'project-specific' && filters.project !== 'all') {
+        queryParams.projectId = filters.project;
+      } else if (filters.project !== 'all') {
+        queryParams.projectId = filters.project;
+        queryParams.includeGlobal = true;  // Include global agents when filtering by project
+      }
+
       if (filters.search) queryParams.search = filters.search;
       queryParams.limit = LIMIT;
       queryParams.offset = reset ? 0 : offset;
@@ -63,8 +86,8 @@ export const AgentLibraryPanel = ({ onClose, onAddAgent }) => {
     setFilters(prev => ({ ...prev, project: e.target.value }));
   };
 
-  const handleTypeChange = (e) => {
-    setFilters(prev => ({ ...prev, type: e.target.value }));
+  const handleScopeChange = (e) => {
+    setFilters(prev => ({ ...prev, scope: e.target.value }));
   };
 
   const handleAdd = async (config) => {
@@ -139,22 +162,26 @@ export const AgentLibraryPanel = ({ onClose, onAddAgent }) => {
           {/* Filters */}
           <div className="flex gap-2">
             <select
+              value={filters.scope}
+              onChange={handleScopeChange}
+              className="flex-1 bg-background border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:border-accent-purple focus:outline-none"
+            >
+              <option value="all">All Scopes</option>
+              <option value="global">Global</option>
+              <option value="project-specific">Project-specific</option>
+            </select>
+            <select
               value={filters.project}
               onChange={handleProjectChange}
               className="flex-1 bg-background border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:border-accent-purple focus:outline-none"
+              disabled={filters.scope === 'global'}
             >
               <option value="all">All Projects</option>
-              <option value="default">Default</option>
-            </select>
-            <select
-              value={filters.type}
-              onChange={handleTypeChange}
-              className="flex-1 bg-background border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:border-accent-purple focus:outline-none"
-            >
-              <option value="all">All Types</option>
-              <option value="claude-code">Claude Code</option>
-              <option value="codex">Codex</option>
-              <option value="generic">Generic</option>
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>
+                  {project.name || project.id}
+                </option>
+              ))}
             </select>
           </div>
 

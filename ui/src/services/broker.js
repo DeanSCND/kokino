@@ -171,10 +171,13 @@ class BrokerClient {
 
   async listAgentConfigs(filters = {}) {
     // Clean up filters - only include defined values
+    // Note: null is allowed for projectId (indicates global agents)
     const cleanFilters = {};
     Object.keys(filters).forEach(key => {
-      if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
-        cleanFilters[key] = filters[key];
+      const value = filters[key];
+      if (value !== undefined && value !== '') {
+        // Keep null values (for global agent filtering)
+        cleanFilters[key] = value === null ? 'null' : value;
       }
     });
 

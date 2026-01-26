@@ -7,7 +7,7 @@ export const EditAgentDialog = ({ agentId, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     name: '',
     role: '',
-    projectId: 'default',
+    projectId: null,  // null for global agents
     cliType: 'claude-code',
     workingDirectory: './',
     systemPrompt: '',
@@ -16,20 +16,40 @@ export const EditAgentDialog = ({ agentId, onClose, onSuccess }) => {
     capabilities: ['code']
   });
 
+  const [scope, setScope] = useState('global'); // 'global' | 'project-specific'
+  const [projects, setProjects] = useState([]);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastModified, setLastModified] = useState(null);
 
   useEffect(() => {
+    // Fetch projects list
+    const fetchProjects = async () => {
+      try {
+        // TODO: Implement GET /api/projects endpoint
+        setProjects([{ id: 'default', name: 'Default Project' }]);
+      } catch (error) {
+        console.error('[EditAgentDialog] Failed to load projects:', error);
+      }
+    };
+    fetchProjects();
+  }, []);
+
+  useEffect(() => {
     const loadConfig = async () => {
       setIsLoading(true);
       try {
         const config = await apiClient.getAgentConfig(agentId);
+
+        // Determine scope from projectId (null = global)
+        const configScope = config.projectId === null ? 'global' : 'project-specific';
+        setScope(configScope);
+
         setFormData({
           name: config.name || '',
           role: config.role || '',
-          projectId: config.projectId || 'default',
+          projectId: config.projectId,  // Can be null
           cliType: config.cliType || 'claude-code',
           workingDirectory: config.workingDirectory || './',
           systemPrompt: config.systemPrompt || '',
@@ -38,7 +58,7 @@ export const EditAgentDialog = ({ agentId, onClose, onSuccess }) => {
           capabilities: config.capabilities || ['code']
         });
         setLastModified(config.updatedAt || config.createdAt);
-        console.log('[EditAgentDialog] Loaded config:', config);
+        console.log('[EditAgentDialog] Loaded config:', config, 'Scope:', configScope);
       } catch (error) {
         console.error('[EditAgentDialog] Failed to load config:', error);
         setErrors({ load: error.message || 'Failed to load agent configuration' });
@@ -69,6 +89,22 @@ export const EditAgentDialog = ({ agentId, onClose, onSuccess }) => {
     }));
   };
 
+  const handleScopeChange = (e) => {
+    const newScope = e.target.value;
+    setScope(newScope);
+
+    // Set projectId based on scope
+    if (newScope === 'global') {
+      setFormData(prev => ({ ...prev, projectId: null }));
+    } else {
+      // Default to first available project if switching to project-specific
+      setFormData(prev => ({
+        ...prev,
+        projectId: projects.length > 0 ? projects[0].id : 'default'
+      }));
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
 
@@ -84,8 +120,9 @@ export const EditAgentDialog = ({ agentId, onClose, onSuccess }) => {
       newErrors.role = 'Role must be 100 characters or less';
     }
 
-    if (!formData.projectId || formData.projectId.trim().length === 0) {
-      newErrors.projectId = 'Project is required';
+    // projectId validation: required if scope is project-specific
+    if (scope === 'project-specific' && (!formData.projectId || formData.projectId.trim().length === 0)) {
+      newErrors.projectId = 'Project is required for project-specific agents';
     }
 
     if (formData.systemPrompt && formData.systemPrompt.length > 2000) {
@@ -194,6 +231,9 @@ export const EditAgentDialog = ({ agentId, onClose, onSuccess }) => {
             errors={errors}
             onChange={handleChange}
             onCheckboxChange={handleCheckboxChange}
+            projects={projects}
+            scope={scope}
+            onScopeChange={handleScopeChange}
           />
 
           {lastModified && (

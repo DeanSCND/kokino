@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import { AgentFormFields } from './AgentFormFields';
 import apiClient from '../../services/api-client';
@@ -7,7 +7,7 @@ export const CreateAgentDialog = ({ onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     name: '',
     role: '',
-    projectId: 'default',
+    projectId: null,  // null for global agents
     cliType: 'claude-code',
     workingDirectory: './',
     systemPrompt: '',
@@ -16,8 +16,24 @@ export const CreateAgentDialog = ({ onClose, onSuccess }) => {
     capabilities: ['code']
   });
 
+  const [scope, setScope] = useState('global'); // 'global' | 'project-specific'
+  const [projects, setProjects] = useState([]);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Fetch projects list
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        // TODO: Implement GET /api/projects endpoint
+        // For now, use a default project
+        setProjects([{ id: 'default', name: 'Default Project' }]);
+      } catch (error) {
+        console.error('[CreateAgentDialog] Failed to load projects:', error);
+      }
+    };
+    fetchProjects();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -38,6 +54,22 @@ export const CreateAgentDialog = ({ onClose, onSuccess }) => {
     }));
   };
 
+  const handleScopeChange = (e) => {
+    const newScope = e.target.value;
+    setScope(newScope);
+
+    // Set projectId based on scope
+    if (newScope === 'global') {
+      setFormData(prev => ({ ...prev, projectId: null }));
+    } else {
+      // Default to first available project if switching to project-specific
+      setFormData(prev => ({
+        ...prev,
+        projectId: projects.length > 0 ? projects[0].id : 'default'
+      }));
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
 
@@ -53,8 +85,9 @@ export const CreateAgentDialog = ({ onClose, onSuccess }) => {
       newErrors.role = 'Role must be 100 characters or less';
     }
 
-    if (!formData.projectId || formData.projectId.trim().length === 0) {
-      newErrors.projectId = 'Project is required';
+    // projectId validation: required if scope is project-specific
+    if (scope === 'project-specific' && (!formData.projectId || formData.projectId.trim().length === 0)) {
+      newErrors.projectId = 'Project is required for project-specific agents';
     }
 
     if (formData.systemPrompt && formData.systemPrompt.length > 2000) {
@@ -147,6 +180,9 @@ export const CreateAgentDialog = ({ onClose, onSuccess }) => {
             errors={errors}
             onChange={handleChange}
             onCheckboxChange={handleCheckboxChange}
+            projects={projects}
+            scope={scope}
+            onScopeChange={handleScopeChange}
           />
         </form>
 
