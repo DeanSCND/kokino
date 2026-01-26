@@ -7,35 +7,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useToast } from '@/components/ui/use-toast';
-import {
   Play,
   Square,
   Trash2,
@@ -46,8 +17,10 @@ import {
   RefreshCw,
   Edit,
   History,
+  X,
+  CheckCircle2,
 } from 'lucide-react';
-import apiClient from '@/services/api-client';
+import apiClient from '../services/api-client';
 
 export function TeamManager({ projectId = null }) {
   const [teams, setTeams] = useState([]);
@@ -58,7 +31,7 @@ export function TeamManager({ projectId = null }) {
   const [editingTeam, setEditingTeam] = useState(null);
   const [selectedTeamRuns, setSelectedTeamRuns] = useState(null);
   const [runsDialogOpen, setRunsDialogOpen] = useState(false);
-  const { toast } = useToast();
+  const [error, setError] = useState(null);
 
   // New team form state
   const [newTeam, setNewTeam] = useState({
@@ -84,11 +57,12 @@ export function TeamManager({ projectId = null }) {
     try {
       const params = projectId ? { projectId, withStatus: true } : { withStatus: true };
       const response = await apiClient.get('/api/teams', { params });
-      setTeams(response.data.teams);
+      // apiClient returns the JSON directly, not wrapped in .data
+      setTeams(response.teams || []);
 
       // Extract status from teams
       const statusMap = {};
-      response.data.teams.forEach(team => {
+      (response.teams || []).forEach(team => {
         if (team.status) {
           statusMap[team.id] = team.status;
         }
@@ -96,11 +70,7 @@ export function TeamManager({ projectId = null }) {
       setTeamStatus(statusMap);
     } catch (error) {
       console.error('Failed to load teams:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load teams',
-        variant: 'destructive',
-      });
+      showError('Failed to load teams');
     }
   };
 
@@ -108,7 +78,7 @@ export function TeamManager({ projectId = null }) {
     try {
       const params = projectId ? { projectId } : {};
       const response = await apiClient.get('/api/agents', { params });
-      setAvailableAgents(response.data.configs || []);
+      setAvailableAgents(response.configs || []);
     } catch (error) {
       console.error('Failed to load agent configs:', error);
     }
@@ -120,7 +90,7 @@ export function TeamManager({ projectId = null }) {
     try {
       const statusPromises = teams.map(team =>
         apiClient.get(`/api/teams/${team.id}/status`)
-          .then(res => ({ id: team.id, status: res.data }))
+          .then(status => ({ id: team.id, status }))
           .catch(() => ({ id: team.id, status: { status: 'error' } }))
       );
 
@@ -135,13 +105,19 @@ export function TeamManager({ projectId = null }) {
     }
   };
 
+  const showError = (message) => {
+    setError(message);
+    setTimeout(() => setError(null), 5000);
+  };
+
+  const showSuccess = (message) => {
+    // Use a simple success state or console log for now
+    console.log('Success:', message);
+  };
+
   const createTeam = async () => {
     if (!newTeam.name || newTeam.agents.length === 0) {
-      toast({
-        title: 'Validation Error',
-        description: 'Team name and at least one agent are required',
-        variant: 'destructive',
-      });
+      showError('Team name and at least one agent are required');
       return;
     }
 
@@ -154,20 +130,13 @@ export function TeamManager({ projectId = null }) {
 
       const response = await apiClient.post('/api/teams', teamData);
 
-      toast({
-        title: 'Success',
-        description: `Team "${response.data.team.name}" created successfully`,
-      });
+      showSuccess(`Team "${response.team.name}" created successfully`);
 
       setCreateDialogOpen(false);
       setNewTeam({ name: '', description: '', agents: [] });
       await loadTeams();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to create team',
-        variant: 'destructive',
-      });
+      showError(error.message || 'Failed to create team');
     } finally {
       setLoading(false);
     }
@@ -175,11 +144,7 @@ export function TeamManager({ projectId = null }) {
 
   const updateTeam = async () => {
     if (!editingTeam || !editingTeam.name || editingTeam.agents.length === 0) {
-      toast({
-        title: 'Validation Error',
-        description: 'Team name and at least one agent are required',
-        variant: 'destructive',
-      });
+      showError('Team name and at least one agent are required');
       return;
     }
 
@@ -191,19 +156,12 @@ export function TeamManager({ projectId = null }) {
         agents: editingTeam.agents,
       });
 
-      toast({
-        title: 'Success',
-        description: `Team "${response.data.team.name}" updated successfully`,
-      });
+      showSuccess(`Team "${response.team.name}" updated successfully`);
 
       setEditingTeam(null);
       await loadTeams();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to update team',
-        variant: 'destructive',
-      });
+      showError(error.message || 'Failed to update team');
     } finally {
       setLoading(false);
     }
@@ -214,18 +172,11 @@ export function TeamManager({ projectId = null }) {
     try {
       const response = await apiClient.post(`/api/teams/${teamId}/start`);
 
-      toast({
-        title: 'Success',
-        description: response.data.message,
-      });
+      showSuccess(response.message);
 
       await loadTeams();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to start team',
-        variant: 'destructive',
-      });
+      showError(error.message || 'Failed to start team');
     } finally {
       setLoading(false);
     }
@@ -236,18 +187,11 @@ export function TeamManager({ projectId = null }) {
     try {
       const response = await apiClient.post(`/api/teams/${teamId}/stop`);
 
-      toast({
-        title: 'Success',
-        description: response.data.message,
-      });
+      showSuccess(response.message);
 
       await loadTeams();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to stop team',
-        variant: 'destructive',
-      });
+      showError(error.message || 'Failed to stop team');
     } finally {
       setLoading(false);
     }
@@ -262,18 +206,11 @@ export function TeamManager({ projectId = null }) {
     try {
       await apiClient.delete(`/api/teams/${teamId}`);
 
-      toast({
-        title: 'Success',
-        description: `Team "${teamName}" deleted successfully`,
-      });
+      showSuccess(`Team "${teamName}" deleted successfully`);
 
       await loadTeams();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to delete team',
-        variant: 'destructive',
-      });
+      showError(error.message || 'Failed to delete team');
     } finally {
       setLoading(false);
     }
@@ -282,29 +219,25 @@ export function TeamManager({ projectId = null }) {
   const loadTeamRuns = async (teamId) => {
     try {
       const response = await apiClient.get(`/api/teams/${teamId}/runs`);
-      setSelectedTeamRuns(response.data);
+      setSelectedTeamRuns(response);
       setRunsDialogOpen(true);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load team runs',
-        variant: 'destructive',
-      });
+      showError('Failed to load team runs');
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
       case 'running':
-        return 'bg-green-500';
+        return '#10b981'; // green
       case 'stopped':
-        return 'bg-gray-500';
+        return '#6b7280'; // gray
       case 'error':
-        return 'bg-red-500';
+        return '#ef4444'; // red
       case 'never_run':
-        return 'bg-blue-500';
+        return '#3b82f6'; // blue
       default:
-        return 'bg-gray-400';
+        return '#9ca3af'; // gray-400
     }
   };
 
@@ -323,34 +256,42 @@ export function TeamManager({ projectId = null }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Users className="w-6 h-6" />
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <Users className="w-5 h-5" />
           Team Management
         </h2>
-        <Button
+        <button
           onClick={() => setCreateDialogOpen(true)}
           disabled={loading}
+          className="px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="w-4 h-4" />
           New Team
-        </Button>
+        </button>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md flex items-center gap-2">
+          <AlertCircle className="w-5 h-5" />
+          {error}
+        </div>
+      )}
+
+      {/* Teams Grid */}
       {teams.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-8">
-            <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-            <p className="text-muted-foreground">No teams configured yet</p>
-            <Button
-              onClick={() => setCreateDialogOpen(true)}
-              variant="outline"
-              className="mt-4"
-            >
-              Create Your First Team
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="border rounded-lg p-8 text-center">
+          <Users className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-500 mb-4">No teams configured yet</p>
+          <button
+            onClick={() => setCreateDialogOpen(true)}
+            className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Create Your First Team
+          </button>
+        </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {teams.map((team) => {
@@ -358,25 +299,25 @@ export function TeamManager({ projectId = null }) {
             const isRunning = status.status === 'running';
 
             return (
-              <Card key={team.id}>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
+              <div key={team.id} className="border rounded-lg shadow-sm bg-white">
+                <div className="p-4">
+                  <div className="flex justify-between items-start mb-3">
                     <div>
-                      <CardTitle className="text-lg">{team.name}</CardTitle>
-                      <CardDescription className="mt-1">
+                      <h3 className="font-semibold text-lg">{team.name}</h3>
+                      <p className="text-sm text-gray-600 mt-1">
                         {team.description || 'No description'}
-                      </CardDescription>
+                      </p>
                     </div>
-                    <Badge
-                      className={`${getStatusColor(status.status)} text-white`}
+                    <span
+                      className="px-2 py-1 text-xs font-medium rounded-full text-white flex items-center gap-1"
+                      style={{ backgroundColor: getStatusColor(status.status) }}
                     >
                       {getStatusIcon(status.status)}
-                      <span className="ml-1">{status.status}</span>
-                    </Badge>
+                      <span>{status.status}</span>
+                    </span>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="text-sm text-muted-foreground">
+
+                  <div className="text-sm text-gray-500 mb-3">
                     <p>{team.agents?.length || 0} agents configured</p>
                     {status.startedAt && (
                       <p className="mt-1">
@@ -392,216 +333,231 @@ export function TeamManager({ projectId = null }) {
 
                   <div className="flex gap-2">
                     {isRunning ? (
-                      <Button
-                        size="sm"
-                        variant="destructive"
+                      <button
                         onClick={() => stopTeam(team.id)}
                         disabled={loading}
+                        className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"
                       >
-                        <Square className="w-4 h-4 mr-1" />
+                        <Square className="w-4 h-4" />
                         Stop
-                      </Button>
+                      </button>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="default"
+                      <button
                         onClick={() => startTeam(team.id)}
                         disabled={loading}
+                        className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
                       >
-                        <Play className="w-4 h-4 mr-1" />
+                        <Play className="w-4 h-4" />
                         Start
-                      </Button>
+                      </button>
                     )}
 
-                    <Button
-                      size="sm"
-                      variant="outline"
+                    <button
                       onClick={() => setEditingTeam(team)}
                       disabled={loading || isRunning}
+                      className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-50"
                     >
                       <Edit className="w-4 h-4" />
-                    </Button>
+                    </button>
 
-                    <Button
-                      size="sm"
-                      variant="outline"
+                    <button
                       onClick={() => loadTeamRuns(team.id)}
                       disabled={loading}
+                      className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-50"
                     >
                       <History className="w-4 h-4" />
-                    </Button>
+                    </button>
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
+                    <button
                       onClick={() => deleteTeam(team.id, team.name)}
                       disabled={loading || isRunning}
+                      className="px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
                     >
                       <Trash2 className="w-4 h-4" />
-                    </Button>
+                    </button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>
       )}
 
       {/* Create/Edit Team Dialog */}
-      <Dialog open={createDialogOpen || !!editingTeam} onOpenChange={(open) => {
-        if (!open) {
-          setCreateDialogOpen(false);
-          setEditingTeam(null);
-          setNewTeam({ name: '', description: '', agents: [] });
-        }
-      }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTeam ? 'Edit Team' : 'Create New Team'}
-            </DialogTitle>
-            <DialogDescription>
-              Configure a team of agents that can be started and stopped together
-            </DialogDescription>
-          </DialogHeader>
+      {(createDialogOpen || editingTeam) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">
+                  {editingTeam ? 'Edit Team' : 'Create New Team'}
+                </h2>
+                <button
+                  onClick={() => {
+                    setCreateDialogOpen(false);
+                    setEditingTeam(null);
+                    setNewTeam({ name: '', description: '', agents: [] });
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="team-name">Team Name</Label>
-              <Input
-                id="team-name"
-                value={editingTeam?.name || newTeam.name}
-                onChange={(e) => {
-                  if (editingTeam) {
-                    setEditingTeam({ ...editingTeam, name: e.target.value });
-                  } else {
-                    setNewTeam({ ...newTeam, name: e.target.value });
-                  }
-                }}
-                placeholder="e.g., Development Team"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="team-description">Description (Optional)</Label>
-              <Textarea
-                id="team-description"
-                value={editingTeam?.description || newTeam.description}
-                onChange={(e) => {
-                  if (editingTeam) {
-                    setEditingTeam({ ...editingTeam, description: e.target.value });
-                  } else {
-                    setNewTeam({ ...newTeam, description: e.target.value });
-                  }
-                }}
-                placeholder="Describe the team's purpose..."
-                rows={3}
-              />
-            </div>
-
-            <div>
-              <Label>Select Agents</Label>
-              <p className="text-sm text-muted-foreground mb-2">
-                Choose which agent configurations to include in this team
-              </p>
-              <ScrollArea className="h-48 border rounded-md p-2">
-                <div className="space-y-2">
-                  {availableAgents.map((agent) => (
-                    <label
-                      key={agent.id}
-                      className="flex items-center space-x-2 cursor-pointer hover:bg-muted p-2 rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={
-                          editingTeam
-                            ? editingTeam.agents?.includes(agent.id)
-                            : newTeam.agents.includes(agent.id)
-                        }
-                        onChange={(e) => {
-                          const isChecked = e.target.checked;
-                          if (editingTeam) {
-                            const agents = isChecked
-                              ? [...(editingTeam.agents || []), agent.id]
-                              : (editingTeam.agents || []).filter((id) => id !== agent.id);
-                            setEditingTeam({ ...editingTeam, agents });
-                          } else {
-                            const agents = isChecked
-                              ? [...newTeam.agents, agent.id]
-                              : newTeam.agents.filter((id) => id !== agent.id);
-                            setNewTeam({ ...newTeam, agents });
-                          }
-                        }}
-                        className="rounded"
-                      />
-                      <div className="flex-1">
-                        <p className="font-medium">{agent.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {agent.role || 'No role'} • {agent.cli_type || 'claude-code'}
-                        </p>
-                      </div>
-                    </label>
-                  ))}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Team Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editingTeam?.name || newTeam.name}
+                    onChange={(e) => {
+                      if (editingTeam) {
+                        setEditingTeam({ ...editingTeam, name: e.target.value });
+                      } else {
+                        setNewTeam({ ...newTeam, name: e.target.value });
+                      }
+                    }}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Development Team"
+                  />
                 </div>
-              </ScrollArea>
-              {(editingTeam?.agents?.length || newTeam.agents.length) > 0 && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  {editingTeam?.agents?.length || newTeam.agents.length} agent(s) selected
-                </p>
-              )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Description (Optional)
+                  </label>
+                  <textarea
+                    value={editingTeam?.description || newTeam.description}
+                    onChange={(e) => {
+                      if (editingTeam) {
+                        setEditingTeam({ ...editingTeam, description: e.target.value });
+                      } else {
+                        setNewTeam({ ...newTeam, description: e.target.value });
+                      }
+                    }}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Describe the team's purpose..."
+                    rows={3}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Select Agents
+                  </label>
+                  <p className="text-sm text-gray-500 mb-2">
+                    Choose which agent configurations to include in this team
+                  </p>
+                  <div className="border rounded-md max-h-48 overflow-y-auto p-2">
+                    {availableAgents.map((agent) => (
+                      <label
+                        key={agent.id}
+                        className="flex items-start space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            editingTeam
+                              ? editingTeam.agents?.includes(agent.id)
+                              : newTeam.agents.includes(agent.id)
+                          }
+                          onChange={(e) => {
+                            const isChecked = e.target.checked;
+                            if (editingTeam) {
+                              const agents = isChecked
+                                ? [...(editingTeam.agents || []), agent.id]
+                                : (editingTeam.agents || []).filter((id) => id !== agent.id);
+                              setEditingTeam({ ...editingTeam, agents });
+                            } else {
+                              const agents = isChecked
+                                ? [...newTeam.agents, agent.id]
+                                : newTeam.agents.filter((id) => id !== agent.id);
+                              setNewTeam({ ...newTeam, agents });
+                            }
+                          }}
+                          className="mt-1"
+                        />
+                        <div className="flex-1">
+                          <p className="font-medium">{agent.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {agent.role || 'No role'} • {agent.cli_type || 'claude-code'}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  {(editingTeam?.agents?.length || newTeam.agents.length) > 0 && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      {editingTeam?.agents?.length || newTeam.agents.length} agent(s) selected
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setCreateDialogOpen(false);
+                    setEditingTeam(null);
+                    setNewTeam({ name: '', description: '', agents: [] });
+                  }}
+                  className="px-4 py-2 border rounded-md hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editingTeam ? updateTeam : createTeam}
+                  disabled={loading}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  {editingTeam ? 'Update Team' : 'Create Team'}
+                </button>
+              </div>
             </div>
           </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCreateDialogOpen(false);
-                setEditingTeam(null);
-                setNewTeam({ name: '', description: '', agents: [] });
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={editingTeam ? updateTeam : createTeam}
-              disabled={loading}
-            >
-              {loading && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
-              {editingTeam ? 'Update Team' : 'Create Team'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
       {/* Run History Dialog */}
-      <Dialog open={runsDialogOpen} onOpenChange={setRunsDialogOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Team Run History</DialogTitle>
-            <DialogDescription>
-              {selectedTeamRuns?.teamName}
-            </DialogDescription>
-          </DialogHeader>
+      {runsDialogOpen && selectedTeamRuns && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold">Team Run History</h2>
+                  <p className="text-sm text-gray-500">{selectedTeamRuns.teamName}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setRunsDialogOpen(false);
+                    setSelectedTeamRuns(null);
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-          <ScrollArea className="h-96">
-            {selectedTeamRuns?.runs?.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                No runs recorded for this team
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {selectedTeamRuns?.runs?.map((run) => (
-                  <Card key={run.runId}>
-                    <CardContent className="p-4">
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {selectedTeamRuns.runs?.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">
+                    No runs recorded for this team
+                  </p>
+                ) : (
+                  selectedTeamRuns.runs?.map((run) => (
+                    <div key={run.runId} className="border rounded-lg p-4">
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="font-medium">Run ID: {run.runId}</p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="font-medium text-sm">Run ID: {run.runId}</p>
+                          <p className="text-sm text-gray-600">
                             Started: {new Date(run.startedAt).toLocaleString()}
                           </p>
                           {run.stoppedAt && (
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm text-gray-600">
                               Stopped: {new Date(run.stoppedAt).toLocaleString()}
                             </p>
                           )}
@@ -610,28 +566,37 @@ export function TeamManager({ projectId = null }) {
                               Error: {run.errorMessage}
                             </p>
                           )}
+                          <p className="text-sm text-gray-500 mt-1">
+                            {run.agentCount} agent(s)
+                          </p>
                         </div>
-                        <Badge className={getStatusColor(run.status)}>
+                        <span
+                          className="px-2 py-1 text-xs font-medium rounded-full text-white"
+                          style={{ backgroundColor: getStatusColor(run.status) }}
+                        >
                           {run.status}
-                        </Badge>
+                        </span>
                       </div>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        {run.agentCount} agent(s)
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
+                    </div>
+                  ))
+                )}
               </div>
-            )}
-          </ScrollArea>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRunsDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={() => {
+                    setRunsDialogOpen(false);
+                    setSelectedTeamRuns(null);
+                  }}
+                  className="px-4 py-2 border rounded-md hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
