@@ -1,6 +1,10 @@
 /**
  * Orchestration Service - Workflow execution and management
  * Phase 4a: Service Layer Foundation
+ *
+ * NOTE: Backend /api/orchestration/* endpoints do not exist yet.
+ * This service layer is ready for when those routes are implemented.
+ * Until then, calls will return 404.
  */
 
 import client from './client.js';

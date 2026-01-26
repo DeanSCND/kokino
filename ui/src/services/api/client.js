@@ -15,11 +15,13 @@ class APIClient {
    * Make HTTP request with retry logic and timeout
    */
   async request(path, options = {}) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
     let lastError;
+
     for (let attempt = 0; attempt < this.retryCount; attempt++) {
+      // Create fresh AbortController and timeout for each attempt
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
       try {
         const response = await fetch(`${this.baseURL}${path}`, {
           ...options,
@@ -49,11 +51,12 @@ class APIClient {
 
         return response.json();
       } catch (error) {
+        clearTimeout(timeoutId); // Clean up timeout on error
         lastError = error;
 
-        // Don't retry on abort or client errors
+        // Don't retry on timeout or client errors (4xx)
         if (error.name === 'AbortError' ||
-            (error instanceof APIError && error.status < 500)) {
+            (error instanceof APIError && error.status >= 400 && error.status < 500)) {
           throw error;
         }
 
@@ -65,7 +68,6 @@ class APIClient {
       }
     }
 
-    clearTimeout(timeoutId);
     throw lastError;
   }
 
