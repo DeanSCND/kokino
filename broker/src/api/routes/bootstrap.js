@@ -31,11 +31,11 @@ export function registerBootstrapRoutes(router, services) {
       const { files, additionalContext, variables } = req.body;
 
       const result = await bootstrapManager.bootstrapAgent(agentId, {
+        ...DEFAULT_BOOTSTRAP_CONFIG,
         mode: 'manual',
         files: files || [],
         additionalContext,
-        variables,
-        ...DEFAULT_BOOTSTRAP_CONFIG
+        variables
       });
 
       jsonResponse(res, 200, result);
@@ -95,9 +95,9 @@ export function registerBootstrapRoutes(router, services) {
 
       // Re-run bootstrap with current mode
       const result = await bootstrapManager.bootstrapAgent(agentId, {
+        ...DEFAULT_BOOTSTRAP_CONFIG,
         mode: bootstrapMode,
-        autoLoadPaths,
-        ...DEFAULT_BOOTSTRAP_CONFIG
+        autoLoadPaths
       });
 
       jsonResponse(res, 200, result);

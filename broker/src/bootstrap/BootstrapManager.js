@@ -260,7 +260,12 @@ export class BootstrapManager {
     if (!agent) {
       throw new Error(`Agent ${agentId} not found`);
     }
-    return agent;
+
+    // Working directory is stored in metadata
+    return {
+      ...agent,
+      workingDirectory: agent.metadata?.workingDirectory || agent.workingDirectory || process.cwd()
+    };
   }
 
   /**
