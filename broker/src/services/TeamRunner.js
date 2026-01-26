@@ -65,16 +65,23 @@ export class TeamRunner {
         // Register agent with the registry in headless mode for AgentRunner
         await this.registry.register(agentId, {
           type: config.cli_type || 'claude-code',
-          commMode: 'headless',  // CRITICAL: Must be headless for AgentRunner
           metadata: {
+            commMode: 'headless',  // CRITICAL: Must be in metadata for registry to pick it up
             configId: config.id,
             teamId: teamId,
             runId: runId,
             role: config.role,
             projectId: config.project_id,
             systemPrompt: config.system_prompt,
+            // Runtime context - essential for AgentRunner
+            cwd: config.working_directory || process.cwd(),  // Working directory for agent execution
+            workingDirectory: config.working_directory || process.cwd(),
+            environmentVariables: config.environmentVariables || {},
+            capabilities: config.capabilities || [],
+            // Bootstrap configuration
             bootstrapMode: config.bootstrap_mode || 'none',
-            bootstrapInstructions: config.bootstrap_instructions
+            bootstrapInstructions: config.bootstrap_instructions,
+            bootstrapCommands: config.bootstrapCommands || []
           }
         });
 
