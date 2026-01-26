@@ -7,6 +7,7 @@
 
 import { Team } from '../../models/Team.js';
 import { TeamRunner } from '../../services/TeamRunner.js';
+import { jsonResponse } from '../../utils/response.js';
 
 /**
  * Register team routes on the API router
@@ -29,7 +30,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * GET /api/teams
    * List all teams, optionally filtered by project
    */
-  router.get('/api/teams', async (req, res) => {
+  router.get('/teams', async (req, res) => {
     try {
       const { projectId, withStatus } = req.query;
 
@@ -37,13 +38,13 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
         ? Team.listWithStatus(projectId)
         : Team.list(projectId).map(t => t.toJSON());
 
-      res.json({
+      jsonResponse(res, 200, {
         teams,
         count: teams.length
       });
     } catch (error) {
       console.error('[Teams API] Error listing teams:', error);
-      res.status(500).json({
+      jsonResponse(res, 500, {
         error: 'Failed to list teams',
         message: error.message
       });
@@ -54,12 +55,12 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * POST /api/teams
    * Create a new team
    */
-  router.post('/api/teams', async (req, res) => {
+  router.post('/teams', async (req, res) => {
     try {
       const { name, description, projectId, agents } = req.body;
 
       if (!name || !agents || !Array.isArray(agents) || agents.length === 0) {
-        return res.status(400).json({
+        return jsonResponse(res, 400, {
           error: 'Invalid team data',
           message: 'Name and at least one agent are required'
         });
@@ -74,7 +75,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
 
       const errors = team.validate();
       if (errors.length > 0) {
-        return res.status(400).json({
+        return jsonResponse(res, 400, {
           error: 'Validation failed',
           errors
         });
@@ -82,13 +83,13 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
 
       await team.save();
 
-      res.status(201).json({
+      jsonResponse(res, 201, {
         team: team.toJSON(),
         message: `Team "${team.name}" created successfully`
       });
     } catch (error) {
       console.error('[Teams API] Error creating team:', error);
-      res.status(500).json({
+      jsonResponse(res, 500, {
         error: 'Failed to create team',
         message: error.message
       });
@@ -99,14 +100,14 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * GET /api/teams/:teamId
    * Get a specific team by ID
    */
-  router.get('/api/teams/:teamId', async (req, res) => {
+  router.get('/teams/:teamId', async (req, res) => {
     try {
       const { teamId } = req.params;
       const { includeConfigs, includeStatus } = req.query;
 
       const team = Team.findById(teamId);
       if (!team) {
-        return res.status(404).json({
+        return jsonResponse(res, 404, {
           error: 'Team not found',
           message: `Team with ID ${teamId} does not exist`
         });
@@ -122,10 +123,10 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
         response.status = team.getStatus();
       }
 
-      res.json(response);
+      jsonResponse(res, 200, response);
     } catch (error) {
       console.error('[Teams API] Error getting team:', error);
-      res.status(500).json({
+      jsonResponse(res, 500, {
         error: 'Failed to get team',
         message: error.message
       });
@@ -136,14 +137,14 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * PUT /api/teams/:teamId
    * Update a team
    */
-  router.put('/api/teams/:teamId', async (req, res) => {
+  router.put('/teams/:teamId', async (req, res) => {
     try {
       const { teamId } = req.params;
       const { name, description, agents } = req.body;
 
       const team = Team.findById(teamId);
       if (!team) {
-        return res.status(404).json({
+        return jsonResponse(res, 404, {
           error: 'Team not found',
           message: `Team with ID ${teamId} does not exist`
         });
@@ -152,7 +153,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
       // Check if team is running
       const status = team.getStatus();
       if (status.status === 'running') {
-        return res.status(409).json({
+        return jsonResponse(res, 409, {
           error: 'Team is running',
           message: 'Cannot update a running team. Stop it first.'
         });
@@ -165,7 +166,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
 
       const errors = team.validate();
       if (errors.length > 0) {
-        return res.status(400).json({
+        return jsonResponse(res, 400, {
           error: 'Validation failed',
           errors
         });
@@ -173,13 +174,13 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
 
       await team.save();
 
-      res.json({
+      jsonResponse(res, 200, {
         team: team.toJSON(),
         message: `Team "${team.name}" updated successfully`
       });
     } catch (error) {
       console.error('[Teams API] Error updating team:', error);
-      res.status(500).json({
+      jsonResponse(res, 500, {
         error: 'Failed to update team',
         message: error.message
       });
@@ -190,13 +191,13 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * DELETE /api/teams/:teamId
    * Delete a team
    */
-  router.delete('/api/teams/:teamId', async (req, res) => {
+  router.delete('/teams/:teamId', async (req, res) => {
     try {
       const { teamId } = req.params;
 
       const team = Team.findById(teamId);
       if (!team) {
-        return res.status(404).json({
+        return jsonResponse(res, 404, {
           error: 'Team not found',
           message: `Team with ID ${teamId} does not exist`
         });
@@ -205,12 +206,12 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
       // Delete will throw if team is running
       await team.delete();
 
-      res.status(204).send();
+      jsonResponse(res, 204, {});
     } catch (error) {
       console.error('[Teams API] Error deleting team:', error);
 
       const statusCode = error.message.includes('active run') ? 409 : 500;
-      res.status(statusCode).json({
+      jsonResponse(res, statusCode, {
         error: 'Failed to delete team',
         message: error.message
       });
@@ -221,13 +222,13 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * POST /api/teams/:teamId/start
    * Start all agents in a team
    */
-  router.post('/api/teams/:teamId/start', async (req, res) => {
+  router.post('/teams/:teamId/start', async (req, res) => {
     try {
       const { teamId } = req.params;
 
       const team = Team.findById(teamId);
       if (!team) {
-        return res.status(404).json({
+        return jsonResponse(res, 404, {
           error: 'Team not found',
           message: `Team with ID ${teamId} does not exist`
         });
@@ -235,7 +236,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
 
       const result = await teamRunner.startTeam(teamId);
 
-      res.json({
+      jsonResponse(res, 200, {
         ...result,
         message: `Team "${team.name}" started successfully with ${result.agentCount} agents`
       });
@@ -243,7 +244,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
       console.error('[Teams API] Error starting team:', error);
 
       const statusCode = error.message.includes('already running') ? 409 : 500;
-      res.status(statusCode).json({
+      jsonResponse(res, statusCode, {
         error: 'Failed to start team',
         message: error.message
       });
@@ -254,13 +255,13 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * POST /api/teams/:teamId/stop
    * Stop all agents in a team
    */
-  router.post('/api/teams/:teamId/stop', async (req, res) => {
+  router.post('/teams/:teamId/stop', async (req, res) => {
     try {
       const { teamId } = req.params;
 
       const team = Team.findById(teamId);
       if (!team) {
-        return res.status(404).json({
+        return jsonResponse(res, 404, {
           error: 'Team not found',
           message: `Team with ID ${teamId} does not exist`
         });
@@ -268,7 +269,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
 
       const result = await teamRunner.stopTeam(teamId);
 
-      res.json({
+      jsonResponse(res, 200, {
         ...result,
         message: `Team "${team.name}" stopped successfully`
       });
@@ -276,7 +277,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
       console.error('[Teams API] Error stopping team:', error);
 
       const statusCode = error.message.includes('No active run') ? 404 : 500;
-      res.status(statusCode).json({
+      jsonResponse(res, statusCode, {
         error: 'Failed to stop team',
         message: error.message
       });
@@ -287,18 +288,18 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * GET /api/teams/:teamId/status
    * Get current status of a team
    */
-  router.get('/api/teams/:teamId/status', async (req, res) => {
+  router.get('/teams/:teamId/status', async (req, res) => {
     try {
       const { teamId } = req.params;
 
       const status = teamRunner.getTeamStatus(teamId);
 
-      res.json(status);
+      jsonResponse(res, 200, status);
     } catch (error) {
       console.error('[Teams API] Error getting team status:', error);
 
       const statusCode = error.message.includes('not found') ? 404 : 500;
-      res.status(statusCode).json({
+      jsonResponse(res, statusCode, {
         error: 'Failed to get team status',
         message: error.message
       });
@@ -309,14 +310,14 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * GET /api/teams/:teamId/runs
    * Get run history for a team
    */
-  router.get('/api/teams/:teamId/runs', async (req, res) => {
+  router.get('/teams/:teamId/runs', async (req, res) => {
     try {
       const { teamId } = req.params;
       const { limit = 10 } = req.query;
 
       const team = Team.findById(teamId);
       if (!team) {
-        return res.status(404).json({
+        return jsonResponse(res, 404, {
           error: 'Team not found',
           message: `Team with ID ${teamId} does not exist`
         });
@@ -324,7 +325,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
 
       const runs = teamRunner.getTeamRunHistory(teamId, parseInt(limit));
 
-      res.json({
+      jsonResponse(res, 200, {
         teamId,
         teamName: team.name,
         runs,
@@ -332,7 +333,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
       });
     } catch (error) {
       console.error('[Teams API] Error getting team runs:', error);
-      res.status(500).json({
+      jsonResponse(res, 500, {
         error: 'Failed to get team runs',
         message: error.message
       });
@@ -343,17 +344,17 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * GET /api/teams/runs/active
    * Get all currently active team runs
    */
-  router.get('/api/teams/runs/active', async (req, res) => {
+  router.get('/teams/runs/active', async (req, res) => {
     try {
       const activeRuns = teamRunner.getActiveRuns();
 
-      res.json({
+      jsonResponse(res, 200, {
         runs: activeRuns,
         count: activeRuns.length
       });
     } catch (error) {
       console.error('[Teams API] Error getting active runs:', error);
-      res.status(500).json({
+      jsonResponse(res, 500, {
         error: 'Failed to get active runs',
         message: error.message
       });
@@ -364,13 +365,13 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
    * POST /api/teams/runs/:runId/stop
    * Stop a specific team run
    */
-  router.post('/api/teams/runs/:runId/stop', async (req, res) => {
+  router.post('/teams/runs/:runId/stop', async (req, res) => {
     try {
       const { runId } = req.params;
 
       const result = await teamRunner.stopRun(runId);
 
-      res.json({
+      jsonResponse(res, 200, {
         ...result,
         message: 'Team run stopped successfully'
       });
@@ -378,7 +379,7 @@ export function registerTeamRoutes(router, { registry, agentRunner }) {
       console.error('[Teams API] Error stopping run:', error);
 
       const statusCode = error.message.includes('not active') ? 404 : 500;
-      res.status(statusCode).json({
+      jsonResponse(res, statusCode, {
         error: 'Failed to stop run',
         message: error.message
       });
