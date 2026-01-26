@@ -165,6 +165,9 @@ export class AgentRunner {
     this.versionTracker = new CLIVersionTracker();
     this.compactionMonitor = new CompactionMonitor(); // Phase 3: Issue #135
 
+    // Phase 6: Hook for team activity tracking
+    this.onExecutionComplete = null;
+
     // Active subprocess calls: agentId -> ChildProcess
     this.activeCalls = new Map();
 
@@ -327,6 +330,15 @@ export class AgentRunner {
 
       // Release lock on success
       this.sessionManager.releaseLock(agentId);
+
+      // Phase 6: Update team activity if agent is part of a team
+      if (this.onExecutionComplete && agent.metadata?.teamId) {
+        try {
+          this.onExecutionComplete(agent.metadata.teamId, agentId);
+        } catch (error) {
+          console.error(`[AgentRunner] Failed to update team activity:`, error);
+        }
+      }
 
       return {
         conversationId: convId,

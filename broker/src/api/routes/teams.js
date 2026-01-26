@@ -17,6 +17,11 @@ import { jsonResponse } from '../../utils/response.js';
 export function registerTeamRoutes(router, { registry, agentRunner }) {
   const teamRunner = new TeamRunner(registry, agentRunner);
 
+  // Phase 6: Hook up activity tracking callback
+  agentRunner.onExecutionComplete = (teamId, agentId) => {
+    teamRunner.updateTeamActivity(teamId);
+  };
+
   // On startup, clean up orphaned runs
   (async () => {
     try {
