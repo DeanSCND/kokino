@@ -14,6 +14,10 @@ export default defineConfig({
     // Run tests in Node environment
     environment: 'node',
     // Show test output
-    reporters: ['verbose']
+    reporters: ['verbose'],
+    // Test environment variables
+    env: {
+      DB_PATH: './src/db/kokino.test.db'
+    }
   }
 });
