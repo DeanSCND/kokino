@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { Activity } from 'lucide-react';
 import { GitHubConnection } from '../components/GitHubConnection';
 import { ServiceStatusBanner } from '../components/ServiceStatus';
 import { CanvasHeader } from '../components/CanvasHeader';
@@ -6,6 +8,7 @@ import { CanvasHeader } from '../components/CanvasHeader';
 export const DashboardLayout = ({ children, headerControls }) => {
     const [brokerAvailable, setBrokerAvailable] = useState(true);
     const [githubAvailable, setGithubAvailable] = useState(true);
+    const location = useLocation();
 
     // Check service health
     useEffect(() => {
@@ -51,14 +54,28 @@ export const DashboardLayout = ({ children, headerControls }) => {
                 {/* Header with controls */}
                 <header className="absolute top-0 left-0 right-0 h-14 border-b border-border bg-background/80 backdrop-blur-md z-10 flex items-center px-6 justify-between">
                     <div className="flex items-center gap-2 text-sm text-text-muted">
-                        <span className="text-text-primary font-medium">Team Canvas</span>
+                        <Link to="/" className="text-text-primary font-medium hover:text-accent-purple transition-colors">
+                            Team Canvas
+                        </Link>
                         <span>/</span>
-                        <span>Overview</span>
+                        <span>{location.pathname === '/monitoring' ? 'Monitoring' : 'Overview'}</span>
                     </div>
 
                     {/* Right-aligned controls */}
                     <div className="flex items-center gap-4">
                         {headerControls}
+                        {headerControls && <div className="w-px h-6 bg-border" />}
+                        <Link
+                            to="/monitoring"
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                location.pathname === '/monitoring'
+                                    ? 'bg-accent-purple text-white'
+                                    : 'text-text-secondary hover:text-text hover:bg-surface-hover'
+                            }`}
+                        >
+                            <Activity size={16} />
+                            Monitoring
+                        </Link>
                         <div className="w-px h-6 bg-border" />
                         <GitHubConnection />
                     </div>

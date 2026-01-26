@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { Canvas } from './pages/Canvas';
 import { GitHubCallback } from './pages/GitHubCallback';
+import { MonitoringDashboard } from './components/MonitoringDashboard';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './contexts/ToastContext';
 
@@ -23,6 +24,16 @@ function App() {
               element={
                 <DashboardLayout headerControls={headerControls}>
                   <Canvas setHeaderControls={setHeaderControls} />
+                </DashboardLayout>
+              }
+            />
+
+            {/* Monitoring Dashboard */}
+            <Route
+              path="/monitoring"
+              element={
+                <DashboardLayout>
+                  <MonitoringDashboard />
                 </DashboardLayout>
               }
             />
