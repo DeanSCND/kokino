@@ -56,7 +56,7 @@ class AgentService {
    * Deregister agent from broker
    */
   async deregister(agentId) {
-    return client.post('/agents/deregister', { agentId });
+    return client.delete(`/agents/${agentId}`);
   }
 
   /**
@@ -93,8 +93,7 @@ class AgentService {
    * Send message to agent
    */
   async sendMessage(agentId, payload, options = {}) {
-    return client.post('/messages/send', {
-      targetAgent: agentId,
+    return client.post(`/agents/${agentId}/send`, {
       payload,
       ...options
     });
