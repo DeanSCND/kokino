@@ -28,10 +28,10 @@ describe('Interactions API', () => {
   const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
 
   beforeEach(() => {
-    // Clean up test data
-    db.prepare('DELETE FROM agents WHERE agent_id LIKE ?').run('interactions-test-%');
-    db.prepare('DELETE FROM messages WHERE from_agent LIKE ? OR to_agent LIKE ?').run('interactions-test-%', 'interactions-test-%');
-    db.prepare('DELETE FROM tickets WHERE origin_agent LIKE ? OR target_agent LIKE ?').run('interactions-test-%', 'interactions-test-%');
+    // Clean up test data - use unique prefix to avoid conflicts with other test files
+    db.prepare('DELETE FROM agents WHERE agent_id LIKE ?').run('interact-%');
+    db.prepare('DELETE FROM messages WHERE from_agent LIKE ? OR to_agent LIKE ?').run('interact-%', 'interact-%');
+    db.prepare('DELETE FROM tickets WHERE origin_agent LIKE ? OR target_agent LIKE ?').run('interact-%', 'interact-%');
 
     // Mock monitoring service
     const mockMonitoringService = {
@@ -48,9 +48,9 @@ describe('Interactions API', () => {
 
   afterEach(() => {
     // Clean up test data
-    db.prepare('DELETE FROM agents WHERE agent_id LIKE ?').run('interactions-test-%');
-    db.prepare('DELETE FROM messages WHERE from_agent LIKE ? OR to_agent LIKE ?').run('interactions-test-%', 'interactions-test-%');
-    db.prepare('DELETE FROM tickets WHERE origin_agent LIKE ? OR target_agent LIKE ?').run('interactions-test-%', 'interactions-test-%');
+    db.prepare('DELETE FROM agents WHERE agent_id LIKE ?').run('interact-%');
+    db.prepare('DELETE FROM messages WHERE from_agent LIKE ? OR to_agent LIKE ?').run('interact-%', 'interact-%');
+    db.prepare('DELETE FROM tickets WHERE origin_agent LIKE ? OR target_agent LIKE ?').run('interact-%', 'interact-%');
   });
 
   describe('GET /api/monitoring/interactions', () => {
@@ -63,11 +63,14 @@ describe('Interactions API', () => {
       expect(mockRes.statusCode).toBe(200);
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
-      expect(response.agents).toEqual([]);
-      expect(response.edges).toEqual([]);
-      expect(response.summary.totalAgents).toBe(0);
-      expect(response.summary.totalMessages).toBe(0);
-      expect(response.summary.activeThreads).toBe(0);
+      // Filter to only our test agents (other tests might be running in parallel)
+      const testAgents = response.agents.filter(a => a.agentId.startsWith('interact-'));
+      const testEdges = response.edges.filter(e =>
+        e.from.startsWith('interact-') || e.to.startsWith('interact-')
+      );
+
+      expect(testAgents).toEqual([]);
+      expect(testEdges).toEqual([]);
     });
 
     it('should return agents with default timeRange (hour)', async () => {
@@ -77,8 +80,17 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertAgent.run('interactions-test-alice', 'test', 'online', fiveMinutesAgo, '{}', oneHourAgo, fiveMinutesAgo);
-      insertAgent.run('interactions-test-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-alice', 'test', 'online', fiveMinutesAgo, '{}', oneHourAgo, fiveMinutesAgo);
+      insertAgent.run('interact-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+
+      // Insert messages so agents appear in participants list
+      const insertMessage = db.prepare(`
+        INSERT INTO messages (message_id, from_agent, to_agent, thread_id, payload, metadata, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      insertMessage.run('imsg-101', 'interact-alice', 'interact-bob', 'thread-1', 'Hello', '{}', 'sent', fiveMinutesAgo);
+      insertMessage.run('imsg-102', 'interact-bob', 'interact-alice', 'thread-1', 'Hi', '{}', 'sent', oneMinuteAgo);
 
       const mockReq = { query: {} };
       const mockRes = createMockResponse();
@@ -88,14 +100,17 @@ describe('Interactions API', () => {
       expect(mockRes.statusCode).toBe(200);
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
-      expect(response.agents.length).toBe(2);
-      expect(response.agents[0]).toMatchObject({
+      // Filter to only our test agents
+      const testAgents = response.agents.filter(a => a.agentId.startsWith('interact-'));
+
+      expect(testAgents.length).toBe(2);
+      expect(testAgents[0]).toMatchObject({
         agentId: expect.any(String),
         status: expect.any(String)
       });
 
       // Check that agents have expected fields
-      response.agents.forEach(agent => {
+      testAgents.forEach(agent => {
         expect(agent).toHaveProperty('agentId');
         expect(agent).toHaveProperty('name');
         expect(agent).toHaveProperty('status');
@@ -115,8 +130,8 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertAgent.run('interactions-test-sender', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
-      insertAgent.run('interactions-test-receiver', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-sender', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-receiver', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
 
       // Insert messages
       const insertMessage = db.prepare(`
@@ -124,9 +139,9 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertMessage.run('msg-1', 'interactions-test-sender', 'interactions-test-receiver', 'thread-1', 'Test message 1', '{}', 'sent', tenMinutesAgo);
-      insertMessage.run('msg-2', 'interactions-test-sender', 'interactions-test-receiver', 'thread-1', 'Test message 2', '{}', 'sent', fiveMinutesAgo);
-      insertMessage.run('msg-3', 'interactions-test-receiver', 'interactions-test-sender', 'thread-2', 'Reply', '{}', 'sent', oneMinuteAgo);
+      insertMessage.run('imsg-1', 'interact-sender', 'interact-receiver', 'thread-1', 'Test message 1', '{}', 'sent', tenMinutesAgo);
+      insertMessage.run('imsg-2', 'interact-sender', 'interact-receiver', 'thread-1', 'Test message 2', '{}', 'sent', fiveMinutesAgo);
+      insertMessage.run('imsg-3', 'interact-receiver', 'interact-sender', 'thread-2', 'Reply', '{}', 'sent', oneMinuteAgo);
 
       const mockReq = { query: {} };
       const mockRes = createMockResponse();
@@ -136,12 +151,12 @@ describe('Interactions API', () => {
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
       // Find sender agent
-      const sender = response.agents.find(a => a.agentId === 'interactions-test-sender');
+      const sender = response.agents.find(a => a.agentId === 'interact-sender');
       expect(sender.messageStats.sent).toBe(2);
       expect(sender.messageStats.received).toBe(1);
 
       // Find receiver agent
-      const receiver = response.agents.find(a => a.agentId === 'interactions-test-receiver');
+      const receiver = response.agents.find(a => a.agentId === 'interact-receiver');
       expect(receiver.messageStats.sent).toBe(1);
       expect(receiver.messageStats.received).toBe(2);
     });
@@ -153,8 +168,16 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertAgent.run('interactions-test-alice', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
-      insertAgent.run('interactions-test-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-alice', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+
+      // Insert messages so agents appear in participants list
+      const insertMessage = db.prepare(`
+        INSERT INTO messages (message_id, from_agent, to_agent, thread_id, payload, metadata, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      insertMessage.run('imsg-103', 'interact-alice', 'interact-bob', 'thread-1', 'Task request', '{}', 'sent', tenMinutesAgo);
 
       // Insert pending tickets
       const insertTicket = db.prepare(`
@@ -162,9 +185,9 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertTicket.run('ticket-1', 'interactions-test-alice', 'interactions-test-bob', 'Task 1', '{}', 'pending', tenMinutesAgo, tenMinutesAgo);
-      insertTicket.run('ticket-2', 'interactions-test-alice', 'interactions-test-bob', 'Task 2', '{}', 'pending', fiveMinutesAgo, fiveMinutesAgo);
-      insertTicket.run('ticket-3', 'interactions-test-bob', 'interactions-test-alice', 'Reply', '{}', 'responded', oneMinuteAgo, oneMinuteAgo);
+      insertTicket.run('ticket-1', 'interact-alice', 'interact-bob', 'Task 1', '{}', 'pending', tenMinutesAgo, tenMinutesAgo);
+      insertTicket.run('ticket-2', 'interact-alice', 'interact-bob', 'Task 2', '{}', 'pending', fiveMinutesAgo, fiveMinutesAgo);
+      insertTicket.run('ticket-3', 'interact-bob', 'interact-alice', 'Reply', '{}', 'responded', oneMinuteAgo, oneMinuteAgo);
 
       const mockReq = { query: {} };
       const mockRes = createMockResponse();
@@ -174,11 +197,11 @@ describe('Interactions API', () => {
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
       // Bob should have 2 pending tickets
-      const bob = response.agents.find(a => a.agentId === 'interactions-test-bob');
+      const bob = response.agents.find(a => a.agentId === 'interact-bob');
       expect(bob.messageStats.pending).toBe(2);
 
       // Alice should have 0 pending (her ticket was responded)
-      const alice = response.agents.find(a => a.agentId === 'interactions-test-alice');
+      const alice = response.agents.find(a => a.agentId === 'interact-alice');
       expect(alice.messageStats.pending).toBe(0);
     });
 
@@ -188,8 +211,8 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertAgent.run('interactions-test-alice', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
-      insertAgent.run('interactions-test-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-alice', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
 
       const insertMessage = db.prepare(`
         INSERT INTO messages (message_id, from_agent, to_agent, thread_id, payload, metadata, status, timestamp)
@@ -197,10 +220,10 @@ describe('Interactions API', () => {
       `);
 
       // Active edge (message within 5 minutes)
-      insertMessage.run('msg-1', 'interactions-test-alice', 'interactions-test-bob', 'thread-1', 'Recent', '{}', 'sent', oneMinuteAgo);
+      insertMessage.run('imsg-4', 'interact-alice', 'interact-bob', 'thread-1', 'Recent', '{}', 'sent', oneMinuteAgo);
 
       // Inactive edge (message older than 5 minutes)
-      insertMessage.run('msg-2', 'interactions-test-bob', 'interactions-test-alice', 'thread-2', 'Old', '{}', 'sent', tenMinutesAgo);
+      insertMessage.run('imsg-5', 'interact-bob', 'interact-alice', 'thread-2', 'Old', '{}', 'sent', tenMinutesAgo);
 
       const mockReq = { query: {} };
       const mockRes = createMockResponse();
@@ -211,13 +234,13 @@ describe('Interactions API', () => {
 
       // Active edge (last activity within 5 minutes)
       const activeEdge = response.edges.find(e =>
-        e.from === 'interactions-test-alice' && e.to === 'interactions-test-bob'
+        e.from === 'interact-alice' && e.to === 'interact-bob'
       );
       expect(activeEdge.isActive).toBe(true);
 
       // Inactive edge (last activity older than 5 minutes)
       const inactiveEdge = response.edges.find(e =>
-        e.from === 'interactions-test-bob' && e.to === 'interactions-test-alice'
+        e.from === 'interact-bob' && e.to === 'interact-alice'
       );
       expect(inactiveEdge.isActive).toBe(false);
     });
@@ -228,17 +251,17 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertAgent.run('interactions-test-alice', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
-      insertAgent.run('interactions-test-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-alice', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
 
       const insertMessage = db.prepare(`
         INSERT INTO messages (message_id, from_agent, to_agent, thread_id, payload, metadata, status, timestamp)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertMessage.run('msg-1', 'interactions-test-alice', 'interactions-test-bob', 'thread-1', 'Hello', '{}', 'sent', tenMinutesAgo);
-      insertMessage.run('msg-2', 'interactions-test-alice', 'interactions-test-bob', 'thread-1', 'How are you?', '{}', 'sent', fiveMinutesAgo);
-      insertMessage.run('msg-3', 'interactions-test-bob', 'interactions-test-alice', 'thread-2', 'Good!', '{}', 'sent', oneMinuteAgo);
+      insertMessage.run('imsg-6', 'interact-alice', 'interact-bob', 'thread-1', 'Hello', '{}', 'sent', tenMinutesAgo);
+      insertMessage.run('imsg-7', 'interact-alice', 'interact-bob', 'thread-1', 'How are you?', '{}', 'sent', fiveMinutesAgo);
+      insertMessage.run('imsg-8', 'interact-bob', 'interact-alice', 'thread-2', 'Good!', '{}', 'sent', oneMinuteAgo);
 
       const mockReq = { query: {} };
       const mockRes = createMockResponse();
@@ -251,7 +274,7 @@ describe('Interactions API', () => {
 
       // Alice -> Bob edge
       const aliceToBob = response.edges.find(e =>
-        e.from === 'interactions-test-alice' && e.to === 'interactions-test-bob'
+        e.from === 'interact-alice' && e.to === 'interact-bob'
       );
       expect(aliceToBob).toBeDefined();
       expect(aliceToBob.messageCount).toBe(2);
@@ -259,7 +282,7 @@ describe('Interactions API', () => {
 
       // Bob -> Alice edge
       const bobToAlice = response.edges.find(e =>
-        e.from === 'interactions-test-bob' && e.to === 'interactions-test-alice'
+        e.from === 'interact-bob' && e.to === 'interact-alice'
       );
       expect(bobToAlice).toBeDefined();
       expect(bobToAlice.messageCount).toBe(1);
@@ -274,11 +297,22 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
-      // Agent with heartbeat within 24 hours
-      insertAgent.run('interactions-test-recent', 'test', 'online', oneHourAgo, '{}', twoDaysAgo, oneHourAgo);
+      // Agent with message within 24 hours
+      insertAgent.run('interact-recent', 'test', 'online', oneHourAgo, '{}', twoDaysAgo, oneHourAgo);
 
-      // Agent with heartbeat older than 24 hours
-      insertAgent.run('interactions-test-old', 'test', 'offline', twoDaysAgo, '{}', twoDaysAgo, twoDaysAgo);
+      // Agent with message older than 24 hours (but has heartbeat within 24 hours)
+      insertAgent.run('interact-old', 'test', 'offline', oneHourAgo, '{}', twoDaysAgo, oneHourAgo);
+
+      const insertMessage = db.prepare(`
+        INSERT INTO messages (message_id, from_agent, to_agent, thread_id, payload, metadata, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      // Recent message (within last day)
+      insertMessage.run('imsg-104', 'interact-recent', 'interact-old', 'thread-1', 'Recent message', '{}', 'sent', oneHourAgo);
+
+      // Old message (2 days ago, outside timeRange)
+      insertMessage.run('imsg-105', 'interact-old', 'interact-recent', 'thread-2', 'Old message', '{}', 'sent', twoDaysAgo);
 
       const mockReq = { query: { timeRange: 'day' } };
       const mockRes = createMockResponse();
@@ -287,9 +321,8 @@ describe('Interactions API', () => {
 
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
-      // Should only include agent with recent heartbeat
-      expect(response.agents.length).toBe(1);
-      expect(response.agents[0].agentId).toBe('interactions-test-recent');
+      // Should include both agents (both participated in the recent message)
+      expect(response.agents.length).toBe(2);
     });
 
     it('should calculate summary statistics correctly', async () => {
@@ -298,17 +331,17 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertAgent.run('interactions-test-alice', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
-      insertAgent.run('interactions-test-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-alice', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
 
       const insertMessage = db.prepare(`
         INSERT INTO messages (message_id, from_agent, to_agent, thread_id, payload, metadata, status, timestamp)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertMessage.run('msg-1', 'interactions-test-alice', 'interactions-test-bob', 'thread-1', 'Hello', '{}', 'sent', tenMinutesAgo);
-      insertMessage.run('msg-2', 'interactions-test-alice', 'interactions-test-bob', 'thread-1', 'How are you?', '{}', 'sent', fiveMinutesAgo);
-      insertMessage.run('msg-3', 'interactions-test-bob', 'interactions-test-alice', 'thread-2', 'Good!', '{}', 'sent', oneMinuteAgo);
+      insertMessage.run('imsg-9', 'interact-alice', 'interact-bob', 'thread-1', 'Hello', '{}', 'sent', tenMinutesAgo);
+      insertMessage.run('imsg-10', 'interact-alice', 'interact-bob', 'thread-1', 'How are you?', '{}', 'sent', fiveMinutesAgo);
+      insertMessage.run('imsg-11', 'interact-bob', 'interact-alice', 'thread-2', 'Good!', '{}', 'sent', oneMinuteAgo);
 
       const mockReq = { query: {} };
       const mockRes = createMockResponse();
@@ -344,7 +377,16 @@ describe('Interactions API', () => {
       `);
 
       const metadata = JSON.stringify({ role: 'Frontend Developer', team: 'UI' });
-      insertAgent.run('interactions-test-alice', 'test', 'online', oneMinuteAgo, metadata, oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-alice', 'test', 'online', oneMinuteAgo, metadata, oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-bob', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+
+      // Insert message so agents appear in participants list
+      const insertMessage = db.prepare(`
+        INSERT INTO messages (message_id, from_agent, to_agent, thread_id, payload, metadata, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      insertMessage.run('imsg-106', 'interact-alice', 'interact-bob', 'thread-1', 'Test', '{}', 'sent', oneMinuteAgo);
 
       const mockReq = { query: {} };
       const mockRes = createMockResponse();
@@ -353,9 +395,52 @@ describe('Interactions API', () => {
 
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
-      const alice = response.agents.find(a => a.agentId === 'interactions-test-alice');
+      const alice = response.agents.find(a => a.agentId === 'interact-alice');
       // Metadata is not currently exposed in the API response, so we just check the agent exists
       expect(alice).toBeDefined();
+    });
+
+    it('should include agents with messages even if heartbeat is stale', async () => {
+      const twoDaysAgo = new Date(Date.now() - 172800000).toISOString();
+
+      const insertAgent = db.prepare(`
+        INSERT INTO agents (agent_id, type, status, last_heartbeat, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      // Agent with stale heartbeat (2 days ago) but recent messages
+      insertAgent.run('interact-stale', 'test', 'offline', twoDaysAgo, '{}', twoDaysAgo, twoDaysAgo);
+      insertAgent.run('interact-active', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+
+      const insertMessage = db.prepare(`
+        INSERT INTO messages (message_id, from_agent, to_agent, thread_id, payload, metadata, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      // Stale agent sent a message recently
+      insertMessage.run('imsg-12', 'interact-stale', 'interact-active', 'thread-1', 'Hello from stale agent', '{}', 'sent', fiveMinutesAgo);
+
+      const mockReq = { query: {} };
+      const mockRes = createMockResponse();
+
+      await routes.getInteractions(mockReq, mockRes);
+
+      const response = JSON.parse(mockRes.end.mock.calls[0][0]);
+
+      // Both agents should be in the response
+      expect(response.agents.length).toBe(2);
+
+      // Stale agent should be included despite old heartbeat
+      const staleAgent = response.agents.find(a => a.agentId === 'interact-stale');
+      expect(staleAgent).toBeDefined();
+      expect(staleAgent.status).toBe('offline');
+      expect(staleAgent.lastSeen).toBe(twoDaysAgo);
+      expect(staleAgent.messageStats.sent).toBe(1);
+
+      // Edge should exist
+      expect(response.edges.length).toBe(1);
+      expect(response.edges[0].from).toBe('interact-stale');
+      expect(response.edges[0].to).toBe('interact-active');
     });
 
     it('should handle agents with no messages', async () => {
@@ -364,7 +449,7 @@ describe('Interactions API', () => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
-      insertAgent.run('interactions-test-lonely', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
+      insertAgent.run('interact-lonely', 'test', 'online', oneMinuteAgo, '{}', oneHourAgo, oneMinuteAgo);
 
       const mockReq = { query: {} };
       const mockRes = createMockResponse();
@@ -373,11 +458,8 @@ describe('Interactions API', () => {
 
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
-      const lonely = response.agents.find(a => a.agentId === 'interactions-test-lonely');
-      expect(lonely.messageStats.sent).toBe(0);
-      expect(lonely.messageStats.received).toBe(0);
-      expect(lonely.messageStats.pending).toBe(0);
-      expect(lonely.messageStats.avgResponseTime).toBe(0);
+      // Agent has no messages, so won't appear in participants list
+      expect(response.agents.length).toBe(0);
     });
   });
 });
