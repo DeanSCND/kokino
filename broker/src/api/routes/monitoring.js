@@ -319,8 +319,15 @@ export function createMonitoringRoutes(monitoringService) {
 
         const from = req.query.from || oneHourAgo;
         const to = req.query.to || now;
-        const limit = Math.min(parseInt(req.query.limit) || 1000, 5000);
-        const offset = parseInt(req.query.offset) || 0;
+
+        // Validate and clamp limit: must be positive, default 1000, max 5000
+        const rawLimit = parseInt(req.query.limit);
+        const limit = Math.min(Math.max(isNaN(rawLimit) ? 1000 : rawLimit, 1), 5000);
+
+        // Validate and clamp offset: must be non-negative, default 0
+        const rawOffset = parseInt(req.query.offset);
+        const offset = Math.max(isNaN(rawOffset) ? 0 : rawOffset, 0);
+
         const threadId = req.query.threadId;
 
         // Parse array filters
@@ -333,22 +340,22 @@ export function createMonitoringRoutes(monitoringService) {
             -- Cross-agent messages
             SELECT
               'message' as type,
-              message_id as id,
-              timestamp,
-              from_agent as agent_id,
-              to_agent as target_agent_id,
-              thread_id,
-              payload as content,
-              metadata
-            FROM messages
+              m.message_id as id,
+              m.timestamp,
+              m.from_agent as agent_id,
+              m.to_agent as target_agent_id,
+              m.thread_id,
+              m.payload as content,
+              m.metadata
+            FROM messages m
 
             UNION ALL
 
             -- Conversation turns
             SELECT
               'conversation' as type,
-              CAST(turn_id AS TEXT) as id,
-              created_at as timestamp,
+              CAST(t.turn_id AS TEXT) as id,
+              t.created_at as timestamp,
               c.agent_id,
               NULL as target_agent_id,
               c.conversation_id as thread_id,
