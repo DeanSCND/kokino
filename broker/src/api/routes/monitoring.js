@@ -289,6 +289,140 @@ export function createMonitoringRoutes(monitoringService) {
         console.error('[Monitoring] Status error:', error);
         jsonResponse(res, 500, { error: 'Failed to fetch monitoring status' });
       }
+    },
+
+    /**
+     * GET /api/monitoring/timeline
+     * Returns unified timeline of all agent activity (messages + conversations)
+     *
+     * Query params:
+     * - from: ISO timestamp (default: 1 hour ago)
+     * - to: ISO timestamp (default: now)
+     * - agents: Comma-separated agent IDs to filter by (optional)
+     * - types: Comma-separated types: 'message' | 'conversation' (optional)
+     * - threadId: Filter by specific thread (optional)
+     * - limit: Maximum records to return (default: 1000, max: 5000)
+     * - offset: Pagination offset (default: 0)
+     *
+     * Response includes:
+     * - entries: Array of timeline entries (messages + conversation turns)
+     * - total: Total count matching filters
+     * - hasMore: Whether more results exist
+     * - oldestTimestamp: Timestamp of oldest entry
+     * - newestTimestamp: Timestamp of newest entry
+     */
+    async getTimeline(req, res) {
+      try {
+        // Parse query parameters
+        const now = new Date().toISOString();
+        const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+
+        const from = req.query.from || oneHourAgo;
+        const to = req.query.to || now;
+        const limit = Math.min(parseInt(req.query.limit) || 1000, 5000);
+        const offset = parseInt(req.query.offset) || 0;
+        const threadId = req.query.threadId;
+
+        // Parse array filters
+        const agents = req.query.agents ? req.query.agents.split(',') : null;
+        const types = req.query.types ? req.query.types.split(',') : null;
+
+        // Build SQL query
+        let sql = `
+          SELECT * FROM (
+            -- Cross-agent messages
+            SELECT
+              'message' as type,
+              message_id as id,
+              timestamp,
+              from_agent as agent_id,
+              to_agent as target_agent_id,
+              thread_id,
+              payload as content,
+              metadata
+            FROM messages
+
+            UNION ALL
+
+            -- Conversation turns
+            SELECT
+              'conversation' as type,
+              CAST(turn_id AS TEXT) as id,
+              created_at as timestamp,
+              c.agent_id,
+              NULL as target_agent_id,
+              c.conversation_id as thread_id,
+              t.content,
+              t.metadata
+            FROM turns t
+            JOIN conversations c ON t.conversation_id = c.conversation_id
+          ) timeline
+          WHERE timestamp >= ? AND timestamp <= ?
+        `;
+
+        const params = [from, to];
+
+        // Apply agent filter
+        if (agents && agents.length > 0) {
+          const placeholders = agents.map(() => '?').join(',');
+          sql += ` AND (agent_id IN (${placeholders}) OR target_agent_id IN (${placeholders}))`;
+          params.push(...agents, ...agents);
+        }
+
+        // Apply type filter
+        if (types && types.length > 0) {
+          const placeholders = types.map(() => '?').join(',');
+          sql += ` AND type IN (${placeholders})`;
+          params.push(...types);
+        }
+
+        // Apply thread filter
+        if (threadId) {
+          sql += ` AND thread_id = ?`;
+          params.push(threadId);
+        }
+
+        // Get total count for pagination
+        const countSql = `SELECT COUNT(*) as total FROM (${sql}) counted`;
+        const db = await import('../../db/schema.js');
+        const countResult = db.default.prepare(countSql).get(...params);
+        const total = countResult.total;
+
+        // Add ordering and pagination
+        sql += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+        params.push(limit, offset);
+
+        // Execute query
+        const entries = db.default.prepare(sql).all(...params);
+
+        // Calculate metadata
+        const hasMore = (offset + entries.length) < total;
+        const oldestTimestamp = entries.length > 0 ? entries[entries.length - 1].timestamp : null;
+        const newestTimestamp = entries.length > 0 ? entries[0].timestamp : null;
+
+        jsonResponse(res, 200, {
+          entries,
+          total,
+          hasMore,
+          oldestTimestamp,
+          newestTimestamp,
+          pagination: {
+            limit,
+            offset,
+            returned: entries.length
+          },
+          filters: {
+            from,
+            to,
+            agents,
+            types,
+            threadId
+          }
+        });
+      } catch (error) {
+        console.error('[Monitoring] Timeline error:', error);
+        jsonResponse(res, 500, { error: 'Failed to fetch timeline' });
+      }
     }
   };
 }
@@ -311,6 +445,7 @@ export function registerMonitoringRoutes(router, monitoringService) {
   router.patch('/monitoring/errors/:errorId/resolve', handlers.resolveError);
   router.post('/monitoring/cleanup', handlers.cleanup);
   router.get('/monitoring/status', handlers.getStatus);
+  router.get('/monitoring/timeline', handlers.getTimeline);
 
-  console.log('[Monitoring] Registered 8 monitoring endpoints');
+  console.log('[Monitoring] Registered 9 monitoring endpoints');
 }
