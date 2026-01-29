@@ -28,8 +28,8 @@ export const AgentChatPanel = ({ agent, onClose }) => {
   useEffect(() => {
     const loadConversations = async () => {
       try {
-        const conversations = await broker.getConversations(agent.agentId);
-        if (conversations.length > 0) {
+        const conversations = await apiClient.getConversations(agent.agentId);
+        if (conversations && conversations.length > 0) {
           // Use most recent conversation
           setConversationId(conversations[0].conversationId);
         }
@@ -82,7 +82,7 @@ export const AgentChatPanel = ({ agent, onClose }) => {
     }
 
     try {
-      await broker.deleteConversation(conversationId);
+      await apiClient.deleteConversation(conversationId);
       setConversationId(null);
       setInput('');
     } catch (err) {
