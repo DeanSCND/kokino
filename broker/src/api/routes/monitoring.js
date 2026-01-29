@@ -462,33 +462,44 @@ export function createMonitoringRoutes(monitoringService) {
 
         const db = await import('../../db/schema.js');
 
-        // Get all online agents (or filter by team if specified)
-        let agentSql = `
-          SELECT agent_id, status, last_heartbeat, metadata
-          FROM agents
-          WHERE last_heartbeat > ?
+        // First, get all agents that participated in messages during the time range
+        // This ensures we include agents even if their heartbeat is stale
+        const participantsSql = `
+          SELECT DISTINCT agent_id FROM (
+            SELECT from_agent as agent_id FROM messages WHERE timestamp > ?
+            UNION
+            SELECT to_agent as agent_id FROM messages WHERE timestamp > ?
+          )
         `;
-        const agentParams = [cutoff];
+        const participants = db.default.prepare(participantsSql).all(cutoff, cutoff);
+        const participantIds = new Set(participants.map(p => p.agent_id));
 
-        // TODO: Add team filtering when needed
-        // if (teamId) {
-        //   agentSql += ' AND team_id = ?';
-        //   agentParams.push(teamId);
-        // }
+        // Get agent details from agents table (for status, heartbeat, metadata)
+        const agentDetailsMap = new Map();
+        if (participantIds.size > 0) {
+          const placeholders = Array.from(participantIds).map(() => '?').join(',');
+          const agentsSql = `
+            SELECT agent_id, status, last_heartbeat, metadata
+            FROM agents
+            WHERE agent_id IN (${placeholders})
+          `;
+          const agentRows = db.default.prepare(agentsSql).all(...Array.from(participantIds));
+          agentRows.forEach(agent => {
+            agentDetailsMap.set(agent.agent_id, agent);
+          });
+        }
 
-        const agents = db.default.prepare(agentSql).all(...agentParams);
-
-        // Get message statistics per agent
+        // Build agent nodes with message statistics
         const agentStatsMap = new Map();
 
-        agents.forEach(agent => {
+        participantIds.forEach(agentId => {
           // Get sent messages
           const sentSql = `
             SELECT COUNT(*) as count
             FROM messages m
             WHERE m.from_agent = ? AND m.timestamp > ?
           `;
-          const sent = db.default.prepare(sentSql).get(agent.agent_id, cutoff);
+          const sent = db.default.prepare(sentSql).get(agentId, cutoff);
 
           // Get received messages
           const receivedSql = `
@@ -496,7 +507,7 @@ export function createMonitoringRoutes(monitoringService) {
             FROM messages m
             WHERE m.to_agent = ? AND m.timestamp > ?
           `;
-          const received = db.default.prepare(receivedSql).get(agent.agent_id, cutoff);
+          const received = db.default.prepare(receivedSql).get(agentId, cutoff);
 
           // Get pending tickets
           const pendingSql = `
@@ -504,7 +515,7 @@ export function createMonitoringRoutes(monitoringService) {
             FROM tickets t
             WHERE t.target_agent = ? AND t.status = 'pending'
           `;
-          const pending = db.default.prepare(pendingSql).get(agent.agent_id);
+          const pending = db.default.prepare(pendingSql).get(agentId);
 
           // Calculate average response time (for messages with latency)
           const avgResponseSql = `
@@ -512,13 +523,16 @@ export function createMonitoringRoutes(monitoringService) {
             FROM messages m
             WHERE m.to_agent = ? AND m.timestamp > ? AND m.latency_ms IS NOT NULL
           `;
-          const avgResponse = db.default.prepare(avgResponseSql).get(agent.agent_id, cutoff);
+          const avgResponse = db.default.prepare(avgResponseSql).get(agentId, cutoff);
 
-          agentStatsMap.set(agent.agent_id, {
-            agentId: agent.agent_id,
-            name: agent.agent_id,
-            status: agent.status,
-            lastSeen: agent.last_heartbeat,
+          // Get agent details if available
+          const agentDetails = agentDetailsMap.get(agentId);
+
+          agentStatsMap.set(agentId, {
+            agentId: agentId,
+            name: agentId,
+            status: agentDetails?.status || 'unknown',
+            lastSeen: agentDetails?.last_heartbeat || null,
             messageStats: {
               sent: sent.count,
               received: received.count,
@@ -566,7 +580,7 @@ export function createMonitoringRoutes(monitoringService) {
           agents: Array.from(agentStatsMap.values()),
           edges,
           summary: {
-            totalAgents: agents.length,
+            totalAgents: agentStatsMap.size,
             totalMessages,
             activeThreads: activeThreads.size,
             messagesPerMinute: parseFloat(messagesPerMinute)
