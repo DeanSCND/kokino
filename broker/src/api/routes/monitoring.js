@@ -430,6 +430,152 @@ export function createMonitoringRoutes(monitoringService) {
         console.error('[Monitoring] Timeline error:', error);
         jsonResponse(res, 500, { error: 'Failed to fetch timeline' });
       }
+    },
+
+    /**
+     * GET /api/monitoring/interactions
+     * Returns agent interaction data for message flow graph visualization
+     *
+     * Query params:
+     * - timeRange: 'hour' | 'day' | 'week' (default: 'hour')
+     * - teamId: Filter by team ID (optional)
+     *
+     * Response includes:
+     * - agents: Array of agent nodes with status and message stats
+     * - edges: Array of interaction edges between agents
+     * - summary: Overall statistics
+     */
+    async getInteractions(req, res) {
+      try {
+        // Parse time range
+        const timeRange = req.query.timeRange || 'hour';
+        const teamId = req.query.teamId;
+
+        // Calculate time cutoff
+        const timeRanges = {
+          'hour': 3600000,      // 1 hour
+          'day': 86400000,      // 24 hours
+          'week': 604800000     // 7 days
+        };
+        const cutoffMs = timeRanges[timeRange] || timeRanges['hour'];
+        const cutoff = new Date(Date.now() - cutoffMs).toISOString();
+
+        const db = await import('../../db/schema.js');
+
+        // Get all online agents (or filter by team if specified)
+        let agentSql = `
+          SELECT agent_id, status, last_heartbeat, metadata
+          FROM agents
+          WHERE last_heartbeat > ?
+        `;
+        const agentParams = [cutoff];
+
+        // TODO: Add team filtering when needed
+        // if (teamId) {
+        //   agentSql += ' AND team_id = ?';
+        //   agentParams.push(teamId);
+        // }
+
+        const agents = db.default.prepare(agentSql).all(...agentParams);
+
+        // Get message statistics per agent
+        const agentStatsMap = new Map();
+
+        agents.forEach(agent => {
+          // Get sent messages
+          const sentSql = `
+            SELECT COUNT(*) as count
+            FROM messages m
+            WHERE m.from_agent = ? AND m.timestamp > ?
+          `;
+          const sent = db.default.prepare(sentSql).get(agent.agent_id, cutoff);
+
+          // Get received messages
+          const receivedSql = `
+            SELECT COUNT(*) as count
+            FROM messages m
+            WHERE m.to_agent = ? AND m.timestamp > ?
+          `;
+          const received = db.default.prepare(receivedSql).get(agent.agent_id, cutoff);
+
+          // Get pending tickets
+          const pendingSql = `
+            SELECT COUNT(*) as count
+            FROM tickets t
+            WHERE t.target_agent = ? AND t.status = 'pending'
+          `;
+          const pending = db.default.prepare(pendingSql).get(agent.agent_id);
+
+          // Calculate average response time (for messages with latency)
+          const avgResponseSql = `
+            SELECT AVG(m.latency_ms) as avg_latency
+            FROM messages m
+            WHERE m.to_agent = ? AND m.timestamp > ? AND m.latency_ms IS NOT NULL
+          `;
+          const avgResponse = db.default.prepare(avgResponseSql).get(agent.agent_id, cutoff);
+
+          agentStatsMap.set(agent.agent_id, {
+            agentId: agent.agent_id,
+            name: agent.agent_id,
+            status: agent.status,
+            lastSeen: agent.last_heartbeat,
+            messageStats: {
+              sent: sent.count,
+              received: received.count,
+              pending: pending.count,
+              avgResponseTime: Math.round(avgResponse.avg_latency || 0)
+            }
+          });
+        });
+
+        // Get interaction edges (agent-to-agent message flows)
+        const edgesSql = `
+          SELECT
+            m.from_agent,
+            m.to_agent,
+            COUNT(*) as message_count,
+            GROUP_CONCAT(DISTINCT m.thread_id) as threads,
+            MAX(m.timestamp) as last_activity
+          FROM messages m
+          WHERE m.timestamp > ?
+          GROUP BY m.from_agent, m.to_agent
+          HAVING message_count > 0
+        `;
+
+        const edgeRows = db.default.prepare(edgesSql).all(cutoff);
+
+        const edges = edgeRows.map(row => ({
+          from: row.from_agent,
+          to: row.to_agent,
+          messageCount: row.message_count,
+          threads: row.threads ? row.threads.split(',').filter(Boolean) : [],
+          lastActivity: row.last_activity,
+          isActive: new Date(row.last_activity) > new Date(Date.now() - 300000) // Active in last 5 min
+        }));
+
+        // Calculate summary statistics
+        const totalMessages = edges.reduce((sum, edge) => sum + edge.messageCount, 0);
+        const activeThreads = new Set();
+        edges.forEach(edge => edge.threads.forEach(t => activeThreads.add(t)));
+
+        // Calculate messages per minute
+        const timeRangeMinutes = cutoffMs / 60000;
+        const messagesPerMinute = totalMessages > 0 ? (totalMessages / timeRangeMinutes).toFixed(2) : 0;
+
+        jsonResponse(res, 200, {
+          agents: Array.from(agentStatsMap.values()),
+          edges,
+          summary: {
+            totalAgents: agents.length,
+            totalMessages,
+            activeThreads: activeThreads.size,
+            messagesPerMinute: parseFloat(messagesPerMinute)
+          }
+        });
+      } catch (error) {
+        console.error('[Monitoring] Interactions error:', error);
+        jsonResponse(res, 500, { error: 'Failed to fetch interactions' });
+      }
     }
   };
 }
@@ -453,6 +599,7 @@ export function registerMonitoringRoutes(router, monitoringService) {
   router.post('/monitoring/cleanup', handlers.cleanup);
   router.get('/monitoring/status', handlers.getStatus);
   router.get('/monitoring/timeline', handlers.getTimeline);
+  router.get('/monitoring/interactions', handlers.getInteractions);
 
-  console.log('[Monitoring] Registered 9 monitoring endpoints');
+  console.log('[Monitoring] Registered 10 monitoring endpoints');
 }
