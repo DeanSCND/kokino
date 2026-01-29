@@ -270,10 +270,15 @@ describe('Interactions API', () => {
 
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
-      expect(response.edges.length).toBe(2);
+      // Filter to only our test edges
+      const testEdges = response.edges.filter(e =>
+        e.from.startsWith('interact-') && e.to.startsWith('interact-')
+      );
+
+      expect(testEdges.length).toBe(2);
 
       // Alice -> Bob edge
-      const aliceToBob = response.edges.find(e =>
+      const aliceToBob = testEdges.find(e =>
         e.from === 'interact-alice' && e.to === 'interact-bob'
       );
       expect(aliceToBob).toBeDefined();
@@ -281,7 +286,7 @@ describe('Interactions API', () => {
       expect(aliceToBob.threads).toContain('thread-1');
 
       // Bob -> Alice edge
-      const bobToAlice = response.edges.find(e =>
+      const bobToAlice = testEdges.find(e =>
         e.from === 'interact-bob' && e.to === 'interact-alice'
       );
       expect(bobToAlice).toBeDefined();
@@ -321,8 +326,11 @@ describe('Interactions API', () => {
 
       const response = JSON.parse(mockRes.end.mock.calls[0][0]);
 
+      // Filter to only our test agents
+      const testAgents = response.agents.filter(a => a.agentId.startsWith('interact-'));
+
       // Should include both agents (both participated in the recent message)
-      expect(response.agents.length).toBe(2);
+      expect(testAgents.length).toBe(2);
     });
 
     it('should calculate summary statistics correctly', async () => {
