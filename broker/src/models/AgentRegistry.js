@@ -4,10 +4,19 @@ import { AgentRepository } from '../db/AgentRepository.js';
 export class AgentRegistry {
   constructor() {
     this.repo = new AgentRepository();
+    this.monitoringStream = null; // Set via setMonitoringStream() - for real-time event broadcasting
 
     // Load existing agents from database on startup
     const agents = this.repo.getAll();
     console.log(`[registry] Loaded ${agents.length} agents from database`);
+  }
+
+  /**
+   * Set monitoring stream for real-time event broadcasting
+   * @param {MonitoringStream} stream - Monitoring stream instance
+   */
+  setMonitoringStream(stream) {
+    this.monitoringStream = stream;
   }
 
   register(agentId, { type, metadata = {}, heartbeatIntervalMs }) {
@@ -64,35 +73,32 @@ export class AgentRegistry {
 
   // Lifecycle methods
   start(agentId) {
-    const updated = this.repo.updateStatus(agentId, 'online');
-    if (updated) {
+    const agent = this.updateStatus(agentId, 'online', 'Started');
+    if (agent) {
       console.log(`[registry] Started agent: ${agentId}`);
-      return this.repo.get(agentId);
     }
-    return null;
+    return agent;
   }
 
   stop(agentId) {
-    const updated = this.repo.updateStatus(agentId, 'offline');
-    if (updated) {
+    const agent = this.updateStatus(agentId, 'offline', 'Stopped');
+    if (agent) {
       console.log(`[registry] Stopped agent: ${agentId}`);
-      return this.repo.get(agentId);
     }
-    return null;
+    return agent;
   }
 
   restart(agentId) {
     // First stop, then start
-    const stopped = this.repo.updateStatus(agentId, 'offline');
+    const stopped = this.updateStatus(agentId, 'offline', 'Restarting');
     if (stopped) {
       // Small delay to simulate restart
       setTimeout(() => {
-        this.repo.updateStatus(agentId, 'online');
+        this.updateStatus(agentId, 'online', 'Restarted');
         console.log(`[registry] Restarted agent: ${agentId}`);
       }, 100);
-      return this.repo.get(agentId);
     }
-    return null;
+    return stopped;
   }
 
   size() {
@@ -101,9 +107,23 @@ export class AgentRegistry {
 
   // Issue #110: Agent lifecycle states (idle → starting → ready → busy → ready)
   updateStatus(agentId, status, message = null) {
+    const agent = this.repo.get(agentId);
+    const oldStatus = agent?.status;
+
     const updated = this.repo.updateStatus(agentId, status);
     if (updated) {
       console.log(`[registry] Status updated: ${agentId} → ${status}${message ? ` (${message})` : ''}`);
+
+      // Broadcast real-time event to monitoring stream if status changed
+      if (this.monitoringStream && oldStatus !== status) {
+        this.monitoringStream.broadcast('agent.status', {
+          agentId,
+          oldStatus: oldStatus || 'unknown',
+          newStatus: status,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       return this.repo.get(agentId);
     }
     return null;

@@ -2,6 +2,7 @@ import * as http from 'node:http';
 import { WebSocketServer } from 'ws';
 import { URL } from 'node:url';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 
 import { AgentRegistry } from './models/AgentRegistry.js';
 import { TicketStore } from './models/TicketStore.js';
@@ -28,6 +29,7 @@ import { registerTeamRoutes } from './api/routes/teams.js';
 import { registerConversationRoutes } from './api/routes/conversations.js';
 import { registerMonitoringRoutes } from './api/routes/monitoring.js';
 import { MonitoringService } from './services/MonitoringService.js';
+import { MonitoringStream } from './services/MonitoringStream.js';
 
 const PORT = Number(process.env.BROKER_PORT || 5050);
 const HOST = process.env.BROKER_HOST || '127.0.0.1'; // IPv4 enforcement
@@ -66,10 +68,20 @@ const integrityChecker = new ConversationIntegrityChecker();
 const monitoringService = new MonitoringService(registry);
 monitoringService.start();
 
+// Initialize monitoring stream for real-time events (Phase 3A)
+const monitoringStream = new MonitoringStream();
+monitoringStream.start();
+
+// Wire monitoringStream into stores for event emission
+registry.setMonitoringStream(monitoringStream);
+ticketStore.setMonitoringStream(monitoringStream);
+conversationStore.setMonitoringStream(monitoringStream);
+
 console.log('[broker] ✓ AgentRunner initialized for headless execution');
 console.log('[broker] ✓ FallbackController initialized for runtime degradation');
 console.log('[broker] ✓ ShadowModeController initialized for parallel testing');
 console.log('[broker] ✓ Telemetry & monitoring initialized');
+console.log('[broker] ✓ Monitoring Stream initialized for real-time events');
 console.log('[broker] ✓ Environment Doctor initialized');
 console.log('[broker] ✓ Conversation Integrity Checker initialized');
 console.log('[broker] ✓ Monitoring Service initialized and started');
@@ -512,6 +524,40 @@ wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   console.log(`[ws] New WebSocket connection: ${url.pathname}`);
 
+  // Monitoring stream endpoint: /api/monitoring/stream
+  if (url.pathname === '/api/monitoring/stream') {
+    const clientId = randomUUID();
+    monitoringStream.addClient(ws, clientId);
+
+    // Handle client messages (filter updates)
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+
+        if (data.type === 'filter') {
+          monitoringStream.updateFilters(clientId, data);
+        } else {
+          console.warn(`[ws/monitoring] Unknown message type from ${clientId}:`, data.type);
+        }
+      } catch (error) {
+        console.error(`[ws/monitoring] Failed to parse message from ${clientId}:`, error.message);
+      }
+    });
+
+    // Handle client disconnect
+    ws.on('close', () => {
+      monitoringStream.removeClient(clientId);
+    });
+
+    // Handle WebSocket errors
+    ws.on('error', (error) => {
+      console.error(`[ws/monitoring] WebSocket error for ${clientId}:`, error.message);
+      monitoringStream.removeClient(clientId);
+    });
+
+    return; // Don't fall through to terminal handler
+  }
+
   // Terminal proxy endpoint: /ws/terminal/:agentId
   const terminalMatch = url.pathname.match(/^\/ws\/terminal\/([^\/]+)$/);
   if (terminalMatch) {
@@ -611,6 +657,7 @@ server.listen(PORT, HOST, () => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[broker] SIGTERM received, shutting down gracefully...');
+  monitoringStream.shutdown();
   server.close(() => {
     console.log('[broker] Server closed');
     process.exit(0);
@@ -619,6 +666,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('[broker] SIGINT received, shutting down gracefully...');
+  monitoringStream.shutdown();
   server.close(() => {
     console.log('[broker] Server closed');
     process.exit(0);
