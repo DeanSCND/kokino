@@ -10,11 +10,20 @@ export class TicketStore {
     this.agentRunner = agentRunner; // For headless agent execution
     this.shadowModeController = shadowModeController; // For shadow mode testing
     this.fallbackController = fallbackController; // For runtime fallback control
+    this.monitoringStream = null; // Set via setMonitoringStream() - for real-time event broadcasting
     // Waiters are runtime-only (not persisted - they're for long-poll HTTP connections)
     this.waiters = new Map(); // ticketId -> Set of callback functions
 
     // Load existing tickets from database on startup
     console.log(`[tickets] Repository initialized`);
+  }
+
+  /**
+   * Set monitoring stream for real-time event broadcasting
+   * @param {MonitoringStream} stream - Monitoring stream instance
+   */
+  setMonitoringStream(stream) {
+    this.monitoringStream = stream;
   }
 
   create({ targetAgent, originAgent, payload, metadata = {}, expectReply = true, timeoutMs = 30000 }) {
@@ -38,6 +47,18 @@ export class TicketStore {
     this.repo.save(ticket);
     this.waiters.set(ticketId, new Set()); // Initialize waiter set for this ticket
     console.log(`[tickets] Created ticket ${ticketId}: ${originAgent} → ${targetAgent}`);
+
+    // Broadcast real-time event to monitoring stream
+    if (this.monitoringStream) {
+      this.monitoringStream.broadcast('message.sent', {
+        id: ticketId,
+        fromAgent: originAgent,
+        toAgent: targetAgent,
+        payload,
+        threadId: metadata.threadId,
+        timestamp: now
+      });
+    }
 
     // CRITICAL: Attempt immediate delivery for headless agents
     // This is async and non-blocking - failures are handled gracefully

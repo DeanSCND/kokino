@@ -578,22 +578,164 @@ POST /agents/:agentId/circuit/reset
 
 Connect: `ws://127.0.0.1:5050`
 
-### Events
+### Terminal Proxy (Legacy)
+**Endpoint:** `ws://127.0.0.1:5050/ws/terminal/:agentId`
 
-**Connection:**
-```json
-{"type": "connected", "clientId": "ws-abc123"}
+Provides bidirectional terminal access to tmux sessions.
+
+---
+
+### Monitoring Stream (Phase 3A) ✨ NEW
+
+**Endpoint:** `ws://127.0.0.1:5050/api/monitoring/stream`
+
+Real-time event stream for all agent activity (messages, conversations, status changes).
+
+#### Connection
+
+```javascript
+const ws = new WebSocket('ws://127.0.0.1:5050/api/monitoring/stream');
+
+ws.onopen = () => {
+  console.log('Connected to monitoring stream');
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Event:', data.type, data);
+};
 ```
 
-**Agent Status:**
+#### Events Received
+
+**1. Connection Confirmation**
 ```json
-{"type": "agent-status", "agentId": "Alice", "status": "online"}
+{
+  "type": "connected",
+  "clientId": "uuid-v4",
+  "timestamp": "2026-01-29T12:00:00.000Z"
+}
 ```
 
-**New Message:**
+**2. Message Sent (Cross-Agent Communication)**
 ```json
-{"type": "message", "from": "Alice", "to": "Bob", "content": "..."}
+{
+  "type": "message.sent",
+  "data": {
+    "id": "ticket-uuid",
+    "fromAgent": "Alice",
+    "toAgent": "Bob",
+    "payload": "Review this PR",
+    "threadId": "thread-123",
+    "timestamp": "2026-01-29T12:00:00.000Z"
+  },
+  "timestamp": 1738156800000
+}
 ```
+
+**3. Conversation Turn (Agent Chat Session)**
+```json
+{
+  "type": "conversation.turn",
+  "data": {
+    "turnId": 42,
+    "conversationId": "conv-abc",
+    "agentId": "Alice",
+    "role": "user",
+    "content": "Implement feature X",
+    "timestamp": "2026-01-29T12:00:00.000Z"
+  },
+  "timestamp": 1738156800000
+}
+```
+
+**4. Agent Status Change**
+```json
+{
+  "type": "agent.status",
+  "data": {
+    "agentId": "Alice",
+    "oldStatus": "idle",
+    "newStatus": "working",
+    "timestamp": "2026-01-29T12:00:00.000Z"
+  },
+  "timestamp": 1738156800000
+}
+```
+
+#### Client-Sent Messages
+
+**Update Filters**
+```json
+{
+  "type": "filter",
+  "agents": ["Alice", "Bob"],
+  "types": ["message", "conversation"]
+}
+```
+
+**Filter Confirmation**
+```json
+{
+  "type": "filter-updated",
+  "filters": {
+    "agents": ["Alice", "Bob"],
+    "types": ["message"]
+  },
+  "timestamp": "2026-01-29T12:00:00.000Z"
+}
+```
+
+#### Filtering
+
+- **agents**: Array of agent IDs to watch (null = all)
+- **types**: Array of event types to receive (null = all)
+  - Base types: `"message"`, `"conversation"`, `"agent"`
+  - Full types: `"message.sent"`, `"conversation.turn"`, `"agent.status"`
+
+Example:
+```javascript
+ws.send(JSON.stringify({
+  type: 'filter',
+  agents: ['Alice'],          // Only Alice's events
+  types: ['message']           // Only message events
+}));
+```
+
+#### Performance
+
+- Supports 10+ simultaneous clients
+- Heartbeat ping every 30 seconds
+- Auto-reconnect recommended (server may restart)
+- <100ms latency for event delivery
+- No events dropped at <100/sec rate
+
+#### Error Handling
+
+WebSocket connection may close for:
+- Server shutdown (`code: 1000`)
+- Network issues
+- Broker restart
+
+**Recommended reconnection logic:**
+```javascript
+function connectMonitoring() {
+  const ws = new WebSocket('ws://127.0.0.1:5050/api/monitoring/stream');
+
+  ws.onclose = () => {
+    console.log('Disconnected, reconnecting in 5s...');
+    setTimeout(connectMonitoring, 5000);
+  };
+
+  return ws;
+}
+```
+
+---
+
+### Legacy Events (Deprecated)
+
+These events are from the old WebSocket system and will be removed in Phase 7:
 
 **Team Phase:**
 ```json

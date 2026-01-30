@@ -6,6 +6,8 @@ import { nanoid } from 'nanoid';
  */
 export class ConversationStore {
   constructor() {
+    this.monitoringStream = null; // Set via setMonitoringStream() - for real-time event broadcasting
+
     // Conversation prepared statements
     this.insertConversationStmt = db.prepare(`
       INSERT INTO conversations (conversation_id, agent_id, title, metadata, created_at, updated_at)
@@ -25,6 +27,14 @@ export class ConversationStore {
 
     this.getTurnsStmt = db.prepare('SELECT * FROM turns WHERE conversation_id = ? ORDER BY turn_id ASC');
     this.deleteTurnsStmt = db.prepare('DELETE FROM turns WHERE conversation_id = ?');
+  }
+
+  /**
+   * Set monitoring stream for real-time event broadcasting
+   * @param {MonitoringStream} stream - Monitoring stream instance
+   */
+  setMonitoringStream(stream) {
+    this.monitoringStream = stream;
   }
 
   // Conversation methods
@@ -105,7 +115,7 @@ export class ConversationStore {
   addTurn(conversationId, { role, content, metadata = {} }) {
     const now = new Date().toISOString();
 
-    this.insertTurnStmt.run({
+    const result = this.insertTurnStmt.run({
       conversationId,
       role,
       content,
@@ -116,6 +126,23 @@ export class ConversationStore {
     // Update conversation's updated_at timestamp
     db.prepare('UPDATE conversations SET updated_at = ? WHERE conversation_id = ?')
       .run(now, conversationId);
+
+    // Broadcast real-time event to monitoring stream
+    if (this.monitoringStream) {
+      const conversation = this.getConversation(conversationId);
+      if (conversation) {
+        this.monitoringStream.broadcast('conversation.turn', {
+          turnId: result.lastInsertRowid,
+          conversationId,
+          agentId: conversation.agentId,
+          role,
+          content,
+          timestamp: now
+        });
+      }
+    }
+
+    return result.lastInsertRowid;
   }
 
   /**
