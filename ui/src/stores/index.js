@@ -7,3 +7,4 @@
 
 export { useUIStore } from './useUIStore';
 export { useAgentStore } from './useAgentStore';
+export { useObservabilityStore } from './useObservabilityStore';
