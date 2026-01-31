@@ -3,26 +3,58 @@
  * Issue #169: Persistent monitoring state with real-time updates
  *
  * Manages timeline data, WebSocket connections, and observability UI state
+ *
+ * USAGE:
+ * ```javascript
+ * import { useObservabilityStore } from '@/stores';
+ *
+ * function MyComponent() {
+ *   const { loadHistory, connectWebSocket, timeline } = useObservabilityStore();
+ *
+ *   useEffect(() => {
+ *     // Load historical data
+ *     loadHistory();
+ *
+ *     // Connect to real-time stream
+ *     connectWebSocket();
+ *
+ *     // Cleanup on unmount
+ *     return () => {
+ *       useObservabilityStore.getState().disconnectWebSocket();
+ *     };
+ *   }, []);
+ *
+ *   return <div>{timeline.length} events</div>;
+ * }
+ * ```
  */
 
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 
 const BROKER_URL = import.meta.env.VITE_BROKER_URL || 'http://127.0.0.1:5050';
-const WS_URL = `ws://127.0.0.1:5050/api/monitoring/stream`;
+
+// Derive WebSocket URL from broker URL to respect environment configuration
+const WS_URL = (() => {
+  const url = new URL(BROKER_URL);
+  const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${url.host}/api/monitoring/stream`;
+})();
 
 export const useObservabilityStore = create(
   devtools(
     persist(
       subscribeWithSelector((set, get) => ({
         // Data Collections (not persisted - loaded from API)
+        // NOTE: Maps are not serializable, so they're excluded from persistence
+        // via partialize config. Data is reloaded from API on mount.
         timeline: [],
         messages: new Map(), // Indexed by message_id
         conversations: new Map(), // Indexed by agent_id
         threads: new Map(), // Indexed by thread_id
 
         // UI State (persisted to localStorage)
-        selected Agent: null,
+        selectedAgent: null,
         selectedThread: null,
         timeRange: [
           new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
