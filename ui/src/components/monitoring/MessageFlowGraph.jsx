@@ -14,7 +14,8 @@ import {
   Background,
   MiniMap,
   MarkerType,
-  Position
+  Position,
+  Handle
 } from '@xyflow/react';
 import dagre from 'dagre';
 import '@xyflow/react/dist/style.css';
@@ -78,6 +79,13 @@ const AgentNode = ({ data }) => {
 
   return (
     <div className={`px-4 py-3 rounded-lg border-2 shadow-sm ${bgColor} min-w-[180px]`}>
+      {/* Target Handle (for incoming edges) */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: '#555' }}
+      />
+
       {/* Agent Name with Status Indicator */}
       <div className="flex items-center gap-2 mb-2">
         <div className={`w-2 h-2 rounded-full ${dotColor}`} />
@@ -106,6 +114,13 @@ const AgentNode = ({ data }) => {
           ~{Math.round(data.avgResponseTime)}ms
         </div>
       )}
+
+      {/* Source Handle (for outgoing edges) */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: '#555' }}
+      />
     </div>
   );
 };
@@ -133,9 +148,13 @@ export const MessageFlowGraph = ({
     const fetchInteractions = async () => {
       setIsLoading(true);
       try {
+        // Convert timeRange string to hours number
+        const hoursMap = { 'hour': 1, 'day': 24, 'week': 168 };
+        const hours = hoursMap[timeRange] || 24;
+
         const BROKER_URL = import.meta.env.VITE_BROKER_URL || 'http://127.0.0.1:5050';
         const response = await fetch(
-          `${BROKER_URL}/api/monitoring/interactions?timeRange=${timeRange}`
+          `${BROKER_URL}/api/monitoring/interactions?hours=${hours}`
         );
 
         if (!response.ok) {

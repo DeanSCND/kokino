@@ -9,12 +9,13 @@
  * - Teams (Phase 3) - Team observability dashboard
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Activity, MessageSquare, GitBranch, Users } from 'lucide-react';
 import { MonitoringDashboard } from '../components/MonitoringDashboard';
 import { ConversationTimeline } from '../components/monitoring/ConversationTimeline';
 import { MessageFlowGraph } from '../components/monitoring/MessageFlowGraph';
 import { TeamObservabilityDashboard } from '../components/monitoring/TeamObservabilityDashboard';
+import { useObservabilityStore } from '../stores';
 
 const TABS = [
   {
@@ -45,6 +46,17 @@ const TABS = [
 
 export const MonitoringPage = () => {
   const [activeTab, setActiveTab] = useState('metrics');
+  const { loadHistory, connectWebSocket, disconnectWebSocket } = useObservabilityStore();
+
+  // Load data on mount
+  useEffect(() => {
+    loadHistory();
+    connectWebSocket();
+
+    return () => {
+      disconnectWebSocket();
+    };
+  }, []);
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -84,15 +96,15 @@ export const MonitoringPage = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden p-6">
         {activeTab === 'metrics' && <MonitoringDashboard />}
         {activeTab === 'conversations' && (
-          <div className="h-full p-6">
+          <div className="h-full">
             <ConversationTimeline autoScroll={false} showFilters={true} />
           </div>
         )}
         {activeTab === 'flow' && (
-          <div className="h-full p-6">
+          <div className="h-full">
             <MessageFlowGraph timeRange="hour" autoLayout={true} />
           </div>
         )}

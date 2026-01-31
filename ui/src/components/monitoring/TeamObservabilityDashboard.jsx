@@ -45,31 +45,17 @@ export const TeamObservabilityDashboard = ({
     filters,
     isLoadingHistory,
     isConnected,
-    loadHistory,
-    connectWebSocket,
-    disconnectWebSocket,
     applyFilter,
     stats
   } = useObservabilityStore();
 
-  // Initialize: load history and connect WebSocket
+  // Initialize: apply filters if needed
   useEffect(() => {
     // Apply agent filter if provided
     if (agentFilter.length > 0) {
       applyFilter({ agents: agentFilter });
     }
-
-    // Load initial data
-    loadHistory();
-
-    // Connect to real-time stream
-    connectWebSocket();
-
-    // Cleanup on unmount
-    return () => {
-      disconnectWebSocket();
-    };
-  }, []);
+  }, [agentFilter]);
 
   // Export all data
   const handleExport = () => {

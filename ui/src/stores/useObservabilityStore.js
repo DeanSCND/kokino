@@ -57,7 +57,7 @@ export const useObservabilityStore = create(
         selectedAgent: null,
         selectedThread: null,
         timeRange: [
-          new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+          new Date(Date.now() - 86400000).toISOString(), // 24 hours ago
           new Date().toISOString() // now
         ],
         filters: {
@@ -267,7 +267,7 @@ export const useObservabilityStore = create(
 
           switch (type) {
             case 'connected':
-              console.log('[ObservabilityStore] Stream connected:', data.clientId);
+              console.log('[ObservabilityStore] Stream connected:', data?.clientId || 'unknown');
               break;
 
             case 'filter-updated':
@@ -522,6 +522,7 @@ export const useObservabilityStore = create(
       })),
       {
         name: 'ObservabilityStore',
+        version: 2, // Increment to force localStorage reset (v2: 24h timeRange)
         // Only persist UI state, not data (which should be reloaded from API)
         partialize: (state) => ({
           selectedAgent: state.selectedAgent,
