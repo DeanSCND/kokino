@@ -462,16 +462,18 @@ export function createMonitoringRoutes(monitoringService) {
 
         const db = await import('../../db/schema.js');
 
-        // First, get all agents that participated in messages during the time range
-        // This ensures we include agents even if their heartbeat is stale
+        // Get all agents that participated in activity during the time range
+        // Query both messages table AND conversations table
         const participantsSql = `
           SELECT DISTINCT agent_id FROM (
             SELECT from_agent as agent_id FROM messages WHERE timestamp > ?
             UNION
             SELECT to_agent as agent_id FROM messages WHERE timestamp > ?
+            UNION
+            SELECT agent_id FROM conversations WHERE started_at > ?
           )
         `;
-        const participants = db.default.prepare(participantsSql).all(cutoff, cutoff);
+        const participants = db.default.prepare(participantsSql).all(cutoff, cutoff, cutoff);
         const participantIds = new Set(participants.map(p => p.agent_id));
 
         // Get agent details from agents table (for status, heartbeat, metadata)
@@ -493,21 +495,29 @@ export function createMonitoringRoutes(monitoringService) {
         const agentStatsMap = new Map();
 
         participantIds.forEach(agentId => {
-          // Get sent messages
+          // Get sent messages (from both messages and turns tables)
           const sentSql = `
-            SELECT COUNT(*) as count
-            FROM messages m
-            WHERE m.from_agent = ? AND m.timestamp > ?
+            SELECT COUNT(*) as count FROM (
+              SELECT 1 FROM messages m WHERE m.from_agent = ? AND m.timestamp > ?
+              UNION ALL
+              SELECT 1 FROM turns t
+              INNER JOIN conversations c ON t.conversation_id = c.conversation_id
+              WHERE c.agent_id = ? AND t.created_at > ? AND t.role = 'assistant'
+            )
           `;
-          const sent = db.default.prepare(sentSql).get(agentId, cutoff);
+          const sent = db.default.prepare(sentSql).get(agentId, cutoff, agentId, cutoff);
 
-          // Get received messages
+          // Get received messages (from both messages and turns tables)
           const receivedSql = `
-            SELECT COUNT(*) as count
-            FROM messages m
-            WHERE m.to_agent = ? AND m.timestamp > ?
+            SELECT COUNT(*) as count FROM (
+              SELECT 1 FROM messages m WHERE m.to_agent = ? AND m.timestamp > ?
+              UNION ALL
+              SELECT 1 FROM turns t
+              INNER JOIN conversations c ON t.conversation_id = c.conversation_id
+              WHERE c.agent_id = ? AND t.created_at > ? AND t.role = 'user'
+            )
           `;
-          const received = db.default.prepare(receivedSql).get(agentId, cutoff);
+          const received = db.default.prepare(receivedSql).get(agentId, cutoff, agentId, cutoff);
 
           // Get pending tickets
           const pendingSql = `
@@ -542,7 +552,8 @@ export function createMonitoringRoutes(monitoringService) {
           });
         });
 
-        // Get interaction edges (agent-to-agent message flows)
+        // Get interaction edges (agent-to-agent message flows from messages table only)
+        // NOTE: Conversations are single-agent sessions, not inter-agent communications
         const edgesSql = `
           SELECT
             m.from_agent,
