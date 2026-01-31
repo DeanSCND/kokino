@@ -7,8 +7,8 @@
  */
 
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { VariableSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { List } from 'react-window';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
 import { Search, Filter, Download, Play, Pause, MessageSquare, Users } from 'lucide-react';
 import { useObservabilityStore } from '../../stores';
 
@@ -58,23 +58,8 @@ export const ConversationTimeline = ({
     return result;
   }, [timeline, searchTerm, typeFilter]);
 
-  // Reset virtual list cache when filtered data changes
-  useEffect(() => {
-    if (listRef.current) {
-      listRef.current.resetAfterIndex(0);
-    }
-  }, [filteredEntries]);
-
-  // Calculate row heights (messages with long content get more height)
-  const getRowHeight = (index) => {
-    const entry = filteredEntries[index];
-    if (!entry) return 80;
-
-    const baseHeight = 80;
-    const contentLength = entry.content?.length || 0;
-    const extraHeight = Math.floor(contentLength / 100) * 20;
-    return Math.min(baseHeight + extraHeight, 200);
-  };
+  // Fixed row height for fixed-size List component
+  const ROW_HEIGHT = 120;
 
   // Auto-scroll to bottom on new entries (when live mode enabled)
   useEffect(() => {
@@ -200,7 +185,7 @@ export const ConversationTimeline = ({
                 height={height}
                 width={width}
                 itemCount={filteredEntries.length}
-                itemSize={getRowHeight}
+                itemSize={ROW_HEIGHT}
                 overscanCount={5}
               >
                 {Row}

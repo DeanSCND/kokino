@@ -11,7 +11,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import {
   Maximize2,
   Minimize2,
