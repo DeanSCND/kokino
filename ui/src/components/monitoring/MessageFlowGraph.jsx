@@ -6,9 +6,8 @@
  */
 
 import React, { useMemo, useCallback, useEffect, useState } from 'react';
-import ReactFlow, {
-  Node,
-  Edge,
+import {
+  ReactFlow,
   useNodesState,
   useEdgesState,
   Controls,

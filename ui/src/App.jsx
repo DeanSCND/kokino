@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { Canvas } from './pages/Canvas';
 import { GitHubCallback } from './pages/GitHubCallback';
-import { MonitoringDashboard } from './components/MonitoringDashboard';
+import { MonitoringPage } from './pages/MonitoringPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './contexts/ToastContext';
 
@@ -33,7 +33,7 @@ function App() {
               path="/monitoring"
               element={
                 <DashboardLayout>
-                  <MonitoringDashboard />
+                  <MonitoringPage />
                 </DashboardLayout>
               }
             />
