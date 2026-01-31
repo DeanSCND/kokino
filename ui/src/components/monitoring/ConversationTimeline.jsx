@@ -21,6 +21,11 @@ export const ConversationTimeline = ({
   const [isLive, setIsLive] = useState(autoScroll);
   const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'message' | 'conversation'
 
+  // Sync isLive with autoScroll prop changes (e.g., when WebSocket connects/disconnects)
+  useEffect(() => {
+    setIsLive(autoScroll);
+  }, [autoScroll]);
+
   // Get data from store
   const {
     timeline,
@@ -52,6 +57,13 @@ export const ConversationTimeline = ({
 
     return result;
   }, [timeline, searchTerm, typeFilter]);
+
+  // Reset virtual list cache when filtered data changes
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.resetAfterIndex(0);
+    }
+  }, [filteredEntries]);
 
   // Calculate row heights (messages with long content get more height)
   const getRowHeight = (index) => {
