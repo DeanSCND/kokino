@@ -90,7 +90,9 @@ export const useObservabilityStore = create(
           set({ isLoadingHistory: true });
 
           try {
-            const [fromTime, toTime] = get().timeRange;
+            // Recalculate timeRange on each load to get fresh data
+            const fromTime = new Date(Date.now() - 86400000).toISOString(); // 24 hours ago
+            const toTime = new Date().toISOString(); // now
             const { agents, types } = get().filters;
 
             const params = new URLSearchParams({
@@ -166,6 +168,7 @@ export const useObservabilityStore = create(
               messages,
               conversations,
               threads,
+              timeRange: [fromTime, toTime], // Update with fresh timestamps
               stats: {
                 totalMessages: messageCount,
                 totalTurns: turnCount,
@@ -204,7 +207,7 @@ export const useObservabilityStore = create(
             const ws = new WebSocket(WS_URL);
 
             ws.onopen = () => {
-              console.log('[ObservabilityStore] WebSocket connected');
+              // // console.log('[ObservabilityStore] WebSocket connected');
               set({ isConnected: true, connectionError: null });
 
               // Apply current filters to WebSocket
@@ -229,13 +232,13 @@ export const useObservabilityStore = create(
             };
 
             ws.onclose = () => {
-              console.log('[ObservabilityStore] WebSocket disconnected');
+              // console.log('[ObservabilityStore] WebSocket disconnected');
               set({ isConnected: false, wsConnection: null });
 
               // Attempt reconnect after 5 seconds
               setTimeout(() => {
                 if (get().wsConnection === null) {
-                  console.log('[ObservabilityStore] Attempting reconnect...');
+                  // console.log('[ObservabilityStore] Attempting reconnect...');
                   get().connectWebSocket();
                 }
               }, 5000);
@@ -267,11 +270,11 @@ export const useObservabilityStore = create(
 
           switch (type) {
             case 'connected':
-              console.log('[ObservabilityStore] Stream connected:', data?.clientId || 'unknown');
+              // console.log('[ObservabilityStore] Stream connected:', data?.clientId || 'unknown');
               break;
 
             case 'filter-updated':
-              console.log('[ObservabilityStore] Filters applied:', data);
+              // console.log('[ObservabilityStore] Filters applied:', data);
               break;
 
             case 'message.sent':
@@ -283,12 +286,12 @@ export const useObservabilityStore = create(
               break;
 
             case 'agent.status':
-              console.log('[ObservabilityStore] Agent status changed:', data);
+              // console.log('[ObservabilityStore] Agent status changed:', data);
               // Could update agent status in UI if needed
               break;
 
             case 'shutdown':
-              console.log('[ObservabilityStore] Server shutting down');
+              // console.log('[ObservabilityStore] Server shutting down');
               get().disconnectWebSocket();
               break;
 
@@ -522,12 +525,12 @@ export const useObservabilityStore = create(
       })),
       {
         name: 'ObservabilityStore',
-        version: 2, // Increment to force localStorage reset (v2: 24h timeRange)
+        version: 3, // v3: Don't persist timeRange (always use fresh 24h window)
         // Only persist UI state, not data (which should be reloaded from API)
         partialize: (state) => ({
           selectedAgent: state.selectedAgent,
           selectedThread: state.selectedThread,
-          timeRange: state.timeRange,
+          // timeRange removed - always use fresh timestamps from loadHistory()
           filters: state.filters
         })
       }

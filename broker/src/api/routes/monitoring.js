@@ -470,7 +470,7 @@ export function createMonitoringRoutes(monitoringService) {
             UNION
             SELECT to_agent as agent_id FROM messages WHERE timestamp > ?
             UNION
-            SELECT agent_id FROM conversations WHERE started_at > ?
+            SELECT agent_id FROM conversations WHERE created_at > ?
           )
         `;
         const participants = db.default.prepare(participantsSql).all(cutoff, cutoff, cutoff);

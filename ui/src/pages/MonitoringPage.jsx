@@ -13,6 +13,9 @@ import React, { useState, useEffect } from 'react';
 import { Activity, MessageSquare, GitBranch, Users } from 'lucide-react';
 import { MonitoringDashboard } from '../components/MonitoringDashboard';
 import { ConversationTimeline } from '../components/monitoring/ConversationTimeline';
+import { SimpleTimeline } from '../components/monitoring/SimpleTimeline';
+import { ConversationView } from '../components/monitoring/ConversationView';
+import { CleanConversationView } from '../components/monitoring/CleanConversationView';
 import { MessageFlowGraph } from '../components/monitoring/MessageFlowGraph';
 import { TeamObservabilityDashboard } from '../components/monitoring/TeamObservabilityDashboard';
 import { useObservabilityStore } from '../stores';
@@ -96,20 +99,20 @@ export const MonitoringPage = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-hidden p-6">
+      <div className="flex-1 min-h-0 overflow-hidden p-6">
         {activeTab === 'metrics' && <MonitoringDashboard />}
         {activeTab === 'conversations' && (
-          <div className="h-full">
-            <ConversationTimeline autoScroll={false} showFilters={true} />
+          <div className="h-full min-h-0">
+            <CleanConversationView />
           </div>
         )}
         {activeTab === 'flow' && (
-          <div className="h-full">
-            <MessageFlowGraph timeRange="hour" autoLayout={true} />
+          <div className="h-full min-h-0">
+            <MessageFlowGraph timeRange="week" autoLayout={true} />
           </div>
         )}
         {activeTab === 'teams' && (
-          <div className="h-full">
+          <div className="h-full min-h-0">
             <TeamObservabilityDashboard defaultLayout="split" />
           </div>
         )}

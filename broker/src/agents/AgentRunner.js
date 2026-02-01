@@ -9,7 +9,7 @@
  * https://github.com/theNetworkChuck/claude-phone
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -22,6 +22,63 @@ import { LogRotator } from './LogRotator.js';
 import { JSONLParser } from './JSONLParser.js';
 import { CLIVersionTracker } from './CLIVersionTracker.js';
 import { CompactionMonitor } from '../bootstrap/CompactionMonitor.js';
+
+/**
+ * Find claude binary across NVM node versions
+ */
+function findClaudeBinary() {
+  // Method 1: Use 'which' with full shell environment
+  try {
+    const result = execSync('bash -l -c "which claude"', {
+      encoding: 'utf8',
+      env: { ...process.env, HOME: process.env.HOME }
+    }).trim();
+    if (result && fs.existsSync(result)) {
+      console.log(`[AgentRunner] Found claude binary via 'which': ${result}`);
+      return result;
+    }
+  } catch (error) {
+    // 'which' failed, continue to other methods
+  }
+
+  // Method 2: Check ALL NVM node versions (not just current)
+  try {
+    const nvmDir = process.env.NVM_DIR || path.join(process.env.HOME, '.nvm');
+    const versionsDir = path.join(nvmDir, 'versions', 'node');
+
+    if (fs.existsSync(versionsDir)) {
+      const nodeVersions = fs.readdirSync(versionsDir);
+      nodeVersions.sort().reverse();
+
+      for (const version of nodeVersions) {
+        const claudePath = path.join(versionsDir, version, 'bin', 'claude');
+        if (fs.existsSync(claudePath)) {
+          console.log(`[AgentRunner] Found claude binary in NVM (${version}): ${claudePath}`);
+          return claudePath;
+        }
+      }
+    }
+  } catch (error) {
+    // NVM check failed, continue
+  }
+
+  // Method 3: Check common locations
+  const commonLocations = [
+    '/usr/local/bin/claude',
+    '/opt/homebrew/bin/claude',
+    path.join(process.env.HOME, '.local/bin/claude'),
+  ];
+
+  for (const location of commonLocations) {
+    if (fs.existsSync(location)) {
+      console.log(`[AgentRunner] Found claude binary at common location: ${location}`);
+      return location;
+    }
+  }
+
+  console.error('[AgentRunner] ✗ Could not find claude binary in any known location');
+  return null;
+}
 
 /**
  * Build the full environment that Claude Code expects.
@@ -513,9 +570,15 @@ export class AgentRunner {
       }
 
       return new Promise((resolve, reject) => {
-        // Use ProcessSupervisor for resource monitoring
-        // Resolve 'claude' from PATH (via claudeEnv)
-        const claude = this.processSupervisor.spawn('claude', args, {
+        // Find claude binary path
+        const claudeBinaryPath = findClaudeBinary();
+        if (!claudeBinaryPath) {
+          reject(new Error('Claude binary not found. Install with: npm install -g @anthropic-ai/claude-cli'));
+          return;
+        }
+
+        // Use ProcessSupervisor for resource monitoring with full binary path
+        const claude = this.processSupervisor.spawn(claudeBinaryPath, args, {
           agentId,
           maxMemoryMB: 2048,
           maxCPUPercent: 200,

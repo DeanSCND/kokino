@@ -6,9 +6,7 @@
  * virtualized list with search, filtering, and auto-scroll support.
  */
 
-import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { List } from 'react-window';
-import { AutoSizer } from 'react-virtualized-auto-sizer';
+import React, { useMemo, useEffect, useState } from 'react';
 import { Search, Filter, Download, Play, Pause, MessageSquare, Users } from 'lucide-react';
 import { useObservabilityStore } from '../../stores';
 
@@ -16,7 +14,6 @@ export const ConversationTimeline = ({
   autoScroll = false,
   showFilters = true
 }) => {
-  const listRef = useRef();
   const [searchTerm, setSearchTerm] = useState('');
   const [isLive, setIsLive] = useState(autoScroll);
   const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'message' | 'conversation'
@@ -58,13 +55,13 @@ export const ConversationTimeline = ({
     return result;
   }, [timeline, searchTerm, typeFilter]);
 
-  // Fixed row height for virtualized list
-  const ROW_HEIGHT = 120;
-
   // Auto-scroll to bottom on new entries (when live mode enabled)
   useEffect(() => {
-    if (isLive && listRef.current && filteredEntries.length > 0) {
-      listRef.current.scrollToItem(filteredEntries.length - 1, 'end');
+    if (isLive && filteredEntries.length > 0) {
+      const container = document.querySelector('.timeline-container');
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
     }
   }, [filteredEntries.length, isLive]);
 
@@ -80,34 +77,9 @@ export const ConversationTimeline = ({
     URL.revokeObjectURL(url);
   };
 
-  // Row renderer for virtualized list
-  const Row = ({ index, style }) => {
-    const entry = filteredEntries[index];
-    if (!entry) return null;
-
-    const isSelected = entry.agent_id === selectedAgent ||
-                      entry.thread_id === selectedThread;
-
-    return (
-      <div
-        style={style}
-        className={`
-          px-4 py-3 border-b border-gray-200 hover:bg-gray-50 cursor-pointer
-          transition-colors
-          ${isSelected ? 'bg-blue-50 border-blue-300' : ''}
-        `}
-        onClick={() => {
-          if (entry.agent_id) selectAgent(entry.agent_id);
-          if (entry.thread_id) selectThread(entry.thread_id);
-        }}
-      >
-        <TimelineEntry entry={entry} />
-      </div>
-    );
-  };
 
   return (
-    <div className="flex flex-col bg-white rounded-lg shadow" style={{ height: '100%' }}>
+    <div className="flex flex-col h-full bg-white rounded-lg shadow">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
         <h2 className="text-lg font-semibold text-gray-900">Timeline</h2>
@@ -170,7 +142,7 @@ export const ConversationTimeline = ({
       )}
 
       {/* Timeline List */}
-      <div className="flex-1">
+      <div className="flex-1 overflow-auto timeline-container">
         {filteredEntries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <MessageSquare className="w-12 h-12 mb-3 text-gray-400" />
@@ -178,20 +150,24 @@ export const ConversationTimeline = ({
             <p className="text-sm">Try adjusting your filters or time range</p>
           </div>
         ) : (
-          <AutoSizer>
-            {({ height, width }) => (
-              <List
-                ref={listRef}
-                height={height}
-                width={width}
-                itemCount={filteredEntries.length}
-                itemSize={ROW_HEIGHT}
-                overscanCount={5}
+          <div>
+            {filteredEntries.map((entry, index) => (
+              <div
+                key={entry.id || index}
+                className={`
+                  px-4 py-3 border-b border-gray-200 hover:bg-gray-50 cursor-pointer
+                  transition-colors
+                  ${entry.agent_id === selectedAgent || entry.thread_id === selectedThread ? 'bg-blue-50 border-blue-300' : ''}
+                `}
+                onClick={() => {
+                  if (entry.agent_id) selectAgent(entry.agent_id);
+                  if (entry.thread_id) selectThread(entry.thread_id);
+                }}
               >
-                {Row}
-              </List>
-            )}
-          </AutoSizer>
+                <TimelineEntry entry={entry} />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -202,9 +178,17 @@ export const ConversationTimeline = ({
  * Individual timeline entry component
  */
 const TimelineEntry = ({ entry }) => {
+  const [showInternal, setShowInternal] = useState(false);
   const timestamp = new Date(entry.timestamp);
   const timeStr = timestamp.toLocaleTimeString();
   const dateStr = timestamp.toLocaleDateString();
+
+  // Check if this is an internal conversation turn (not a message between agents)
+  const isInternal = entry.type === 'conversation';
+
+  // Check if this is a user message (from metadata)
+  const metadata = entry.metadata ? (typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata) : {};
+  const isUserMessage = metadata.source === 'broker' || entry.role === 'user';
 
   // Format content (truncate if too long)
   const content = entry.content || '';
@@ -238,7 +222,7 @@ const TimelineEntry = ({ entry }) => {
         {/* Agent Info */}
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium text-gray-900">
-            {entry.agent_id}
+            {isUserMessage ? 'You' : entry.agent_id}
           </span>
 
           {entry.type === 'message' && entry.target_agent_id && (
@@ -250,17 +234,50 @@ const TimelineEntry = ({ entry }) => {
             </>
           )}
 
+          {isUserMessage && entry.agent_id && (
+            <>
+              <span className="text-gray-400">→</span>
+              <span className="text-sm font-medium text-gray-900">
+                {entry.agent_id}
+              </span>
+            </>
+          )}
+
           {entry.thread_id && (
             <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">
               Thread: {entry.thread_id.substring(0, 8)}
             </span>
           )}
+
+          {/* Internal dialogue toggle for conversation turns - but not for user messages */}
+          {isInternal && !isUserMessage && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowInternal(!showInternal);
+              }}
+              className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors flex items-center gap-1"
+              title={showInternal ? "Hide internal dialogue" : "Show internal dialogue"}
+            >
+              <span className="text-[10px]">💭</span>
+              <span>{showInternal ? 'Hide' : 'Show'} Internal</span>
+            </button>
+          )}
         </div>
 
-        {/* Message Content */}
-        <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
-          {displayContent}
-        </p>
+        {/* Message Content - show for messages, user messages, or when internal is expanded */}
+        {(entry.type === 'message' || isUserMessage || showInternal) && (
+          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+            {displayContent}
+          </p>
+        )}
+
+        {/* Collapsed state for internal dialogue (but not user messages) */}
+        {isInternal && !isUserMessage && !showInternal && (
+          <p className="text-sm text-gray-500 italic">
+            Internal dialogue (click to expand)
+          </p>
+        )}
       </div>
     </div>
   );
