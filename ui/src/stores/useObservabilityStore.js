@@ -90,9 +90,10 @@ export const useObservabilityStore = create(
           set({ isLoadingHistory: true });
 
           try {
-            // Recalculate timeRange on each load to get fresh data
-            const fromTime = new Date(Date.now() - 86400000).toISOString(); // 24 hours ago
-            const toTime = new Date().toISOString(); // now
+            // Use stored timeRange if available, otherwise default to 24 hours
+            const { timeRange: storedTimeRange } = get();
+            const fromTime = storedTimeRange?.[0] || new Date(Date.now() - 86400000).toISOString(); // 24 hours ago
+            const toTime = storedTimeRange?.[1] || new Date().toISOString(); // now
             const { agents, types } = get().filters;
 
             const params = new URLSearchParams({
@@ -168,7 +169,7 @@ export const useObservabilityStore = create(
               messages,
               conversations,
               threads,
-              timeRange: [fromTime, toTime], // Update with fresh timestamps
+              timeRange: [fromTime, toTime], // Keep the timeRange that was used
               stats: {
                 totalMessages: messageCount,
                 totalTurns: turnCount,
@@ -525,12 +526,12 @@ export const useObservabilityStore = create(
       })),
       {
         name: 'ObservabilityStore',
-        version: 3, // v3: Don't persist timeRange (always use fresh 24h window)
+        version: 4, // v4: Persist timeRange again so user selections are maintained
         // Only persist UI state, not data (which should be reloaded from API)
         partialize: (state) => ({
           selectedAgent: state.selectedAgent,
           selectedThread: state.selectedThread,
-          // timeRange removed - always use fresh timestamps from loadHistory()
+          timeRange: state.timeRange, // Persist user's time range selection
           filters: state.filters
         })
       }

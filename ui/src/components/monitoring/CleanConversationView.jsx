@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, User, Bot, ArrowRight } from 'lucide-react';
+import { useObservabilityStore } from '../../stores';
+
+const BROKER_URL = import.meta.env.VITE_BROKER_URL || 'http://127.0.0.1:5050';
 
 export const CleanConversationView = () => {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Get timeRange from store
+  const { timeRange } = useObservabilityStore();
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Get today's data
-        const today = new Date();
-        const from = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
-        const to = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
-        const response = await fetch(`http://127.0.0.1:5050/api/monitoring/timeline?from=${from}&to=${to}&limit=100`);
+        // Use timeRange from store or default to today
+        const from = timeRange?.[0] || new Date(new Date().setHours(0,0,0,0)).toISOString();
+        const to = timeRange?.[1] || new Date(new Date().setHours(23,59,59,999)).toISOString();
+        const response = await fetch(`${BROKER_URL}/api/monitoring/timeline?from=${from}&to=${to}&limit=100`);
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
