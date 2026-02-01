@@ -69,7 +69,7 @@ export const TeamObservabilityDashboard = ({
     return () => {
       disconnectWebSocket();
     };
-  }, [agentFilter]);
+  }, []); // Only run once on mount to avoid infinite loop
 
   // Export all data
   const handleExport = () => {
