@@ -427,6 +427,104 @@ POST /api/teams/:teamId/resume
 
 ## Monitoring
 
+### Get Timeline (Phase 3 Observability)
+```http
+GET /api/monitoring/timeline?from=...&to=...&limit=100&offset=0
+```
+
+Retrieves historical timeline data for agent activity (messages and conversations).
+
+**Query Parameters:**
+- `from` - ISO date string (start of time range)
+- `to` - ISO date string (end of time range)
+- `limit` - Maximum number of entries (default: 1000)
+- `offset` - Pagination offset (default: 0)
+- `agents` - Comma-separated agent IDs to filter
+- `types` - Comma-separated types ('message', 'conversation')
+
+**Response:**
+```json
+{
+  "entries": [
+    {
+      "id": "entry-123",
+      "type": "conversation",
+      "timestamp": "2026-01-31T10:00:00.000Z",
+      "agent_id": "Alice",
+      "thread_id": "thread-456",
+      "content": "Please review the latest changes",
+      "metadata": {
+        "source": "broker",
+        "sessionId": "session-789"
+      }
+    },
+    {
+      "id": "msg-456",
+      "type": "message",
+      "timestamp": "2026-01-31T10:01:00.000Z",
+      "agent_id": "Bob",
+      "target_agent_id": "Alice",
+      "thread_id": "thread-456",
+      "content": "I'll review them now"
+    }
+  ],
+  "total": 42
+}
+```
+
+### Get Interactions (Phase 3 Graph Visualization)
+```http
+GET /api/monitoring/interactions?timeRange=hour
+```
+
+Retrieves agent interaction data for graph visualization.
+
+**Query Parameters:**
+- `timeRange` - Time range ('hour', 'day', 'week', 'month')
+
+**Response:**
+```json
+{
+  "nodes": [
+    {
+      "id": "Alice",
+      "label": "Alice",
+      "type": "agent",
+      "metrics": {
+        "messagesSent": 15,
+        "messagesReceived": 8,
+        "conversationTurns": 23
+      }
+    },
+    {
+      "id": "Bob",
+      "label": "Bob",
+      "type": "agent",
+      "metrics": {
+        "messagesSent": 8,
+        "messagesReceived": 15,
+        "conversationTurns": 19
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "Alice",
+      "target": "Bob",
+      "weight": 15,
+      "label": "15 messages"
+    }
+  ],
+  "summary": {
+    "totalMessages": 23,
+    "totalConversations": 42,
+    "activeAgents": 2,
+    "timeRange": "hour"
+  }
+}
+```
+
 ### Get Overview
 ```http
 GET /api/monitoring/overview

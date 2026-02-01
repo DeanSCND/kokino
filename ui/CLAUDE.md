@@ -29,7 +29,8 @@ ui/
 │   ├── index.css             # Global styles (Tailwind)
 │   │
 │   ├── pages/                # Page components
-│   │   └── Canvas.jsx        # Main orchestration UI (262 lines!)
+│   │   ├── Canvas.jsx        # Main orchestration UI (262 lines!)
+│   │   └── MonitoringPage.jsx # Phase 3 tabbed monitoring interface
 │   │
 │   ├── layouts/              # Layout components
 │   │   └── DashboardLayout.jsx
@@ -43,7 +44,13 @@ ui/
 │   │   │   └── AgentCard.jsx
 │   │   ├── teams/            # Team management
 │   │   │   └── TeamManager.jsx
-│   │   ├── monitoring/       # Monitoring dashboards
+│   │   ├── monitoring/       # Phase 3 Observability components
+│   │   │   ├── TeamObservabilityDashboard.jsx # Main dashboard container
+│   │   │   ├── ConversationTimeline.jsx       # Timeline view
+│   │   │   ├── CleanConversationView.jsx      # Clean chat display
+│   │   │   ├── MessageFlowGraph.jsx           # React Flow graph
+│   │   │   ├── ConversationView.jsx           # Conversation details
+│   │   │   └── SimpleTimeline.jsx             # Basic timeline
 │   │   ├── AgentNode.jsx     # Canvas node component
 │   │   ├── Toast.jsx         # Toast notifications
 │   │   └── LoadingSpinner.jsx
@@ -51,7 +58,8 @@ ui/
 │   ├── stores/               # Zustand state management
 │   │   ├── index.js          # Store exports
 │   │   ├── useAgentStore.js  # Agent state
-│   │   └── useUIStore.js     # UI state (modals, loading)
+│   │   ├── useUIStore.js     # UI state (modals, loading)
+│   │   └── useObservabilityStore.js # Phase 3 monitoring state
 │   │
 │   ├── services/             # API clients
 │   │   ├── api/              # Service layer (Phase 4 refactor)
@@ -122,6 +130,39 @@ const useUIStore = create((set) => ({
 
   setLoading: (loading) => set({ isLoading: loading })
 }));
+```
+
+**Observability Store** (`stores/useObservabilityStore.js`):
+```javascript
+const useObservabilityStore = create(
+  devtools(
+    persist((set, get) => ({
+      // Timeline data
+      timeline: [],
+      messages: new Map(),
+      conversations: new Map(),
+      threads: new Map(),
+
+      // UI state (persisted)
+      selectedAgent: null,
+      selectedThread: null,
+      timeRange: [from, to],
+      filters: { agents: [], types: [], search: '' },
+
+      // WebSocket connection
+      isConnected: false,
+      wsConnection: null,
+
+      // Actions
+      loadHistory: async (queryParams) => { /* fetch timeline data */ },
+      connectWebSocket: () => { /* connect to monitoring stream */ },
+      handleRealtimeUpdate: (event) => { /* process WebSocket events */ },
+      setTimeRange: async (from, to) => { /* update and reload */ },
+      applyFilter: (filterUpdate) => { /* apply filters */ },
+      getFilteredTimeline: () => { /* return filtered timeline */ }
+    }))
+  )
+);
 ```
 
 ### 2. Service Layer Pattern
@@ -427,16 +468,22 @@ describe('useAgentStore', () => {
 
 ### Pages
 - **`src/pages/Canvas.jsx`** - Main orchestration UI (React Flow canvas)
+- **`src/pages/MonitoringPage.jsx`** - Tabbed monitoring interface (metrics, conversations, flow, teams)
 
 ### Core Components
 - **`src/components/agents/CreateAgentDialog.jsx`** - Agent creation form
 - **`src/components/agents/AgentLibraryPanel.jsx`** - Browse agent configs
 - **`src/components/AgentNode.jsx`** - Canvas node component
 - **`src/components/teams/TeamManager.jsx`** - Team CRUD interface
+- **`src/components/monitoring/TeamObservabilityDashboard.jsx`** - Main observability UI
+- **`src/components/monitoring/ConversationTimeline.jsx`** - Real-time timeline view
+- **`src/components/monitoring/MessageFlowGraph.jsx`** - Agent interaction graph
+- **`src/components/monitoring/CleanConversationView.jsx`** - Clean conversation display
 
 ### State Management
 - **`src/stores/useAgentStore.js`** - Agent state (agents, teams, configs)
 - **`src/stores/useUIStore.js`** - UI state (modals, loading, notifications)
+- **`src/stores/useObservabilityStore.js`** - Phase 3 monitoring state (timeline, WebSocket, filters)
 
 ### Services (API Layer)
 - **`src/services/api/client.js`** - Base HTTP client (axios wrapper)

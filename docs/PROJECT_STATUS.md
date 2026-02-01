@@ -1,13 +1,13 @@
 # Kokino Project Status
 
-*Last Updated: 2026-01-27*
+*Last Updated: 2026-01-31*
 
-## Overall Status: Phases 1-5 COMPLETE ✅, Phase 6 Ready for Implementation
+## Overall Status: Phases 1-5 COMPLETE ✅, Phase 3 Observability COMPLETE ✅, Phase 6 In Progress
 
 ### Quick Summary
-- **Complete:** Core broker, agent configs, bootstrap system, Canvas refactor with Zustand, Team lifecycle management
-- **Ready to Build:** Monitoring (practical)
-- **Working System:** Full agent lifecycle with context loading
+- **Complete:** Core broker, agent configs, bootstrap system, Canvas refactor with Zustand, Team lifecycle management, Phase 3 Observability
+- **In Progress:** Phase 6 Monitoring (practical implementation)
+- **Working System:** Full agent lifecycle with context loading and real-time observability
 
 ## Phase Status
 
@@ -48,6 +48,35 @@
 - `ui/src/components/agents/AgentLibraryPanel.jsx` ✅
 - `ui/src/components/agents/AgentFormFields.jsx` ✅
 - `ui/src/components/agents/AgentCard.jsx` ✅
+
+---
+
+### ✅ Phase 3A: Observability - COMPLETE
+**Status:** Production Ready (Completed 2026-01-31)
+
+#### What's Built:
+- Real-time monitoring WebSocket stream at `/api/monitoring/stream`
+- Timeline API endpoint for historical data (`/api/monitoring/timeline`)
+- Interactions API for graph visualization (`/api/monitoring/interactions`)
+- Zustand observability store with WebSocket integration
+- Full suite of UI components for monitoring
+
+#### UI Components:
+- `MonitoringPage.jsx` - Tabbed interface for all monitoring features
+- `TeamObservabilityDashboard.jsx` - Main dashboard with resizable panels
+- `ConversationTimeline.jsx` - Real-time timeline view with collapsible internal dialogue
+- `CleanConversationView.jsx` - Clean chat-like conversation display
+- `MessageFlowGraph.jsx` - React Flow graph visualization
+- `ConversationView.jsx` - Detailed conversation viewer
+- `SimpleTimeline.jsx` - Basic timeline display
+
+#### Key Features:
+- Real-time WebSocket updates for agent activity
+- Historical timeline data with filtering
+- Agent interaction graph visualization
+- Persisted time range and filter preferences
+- Collapsible internal dialogue (reasoning) sections
+- Support for environment variable configuration (VITE_BROKER_URL)
 
 ---
 
@@ -173,13 +202,13 @@ broker/src/
 │   ├── BootstrapManager.js  ✅ Complete
 │   └── BootstrapModes.js    ✅ Complete
 ├── services/
-│   ├── TeamRunner.js        ❌ Not built (Phase 5)
-│   └── MonitoringService.js ❌ Not built (Phase 6)
+│   ├── TeamRunner.js        ✅ Complete (Phase 5)
+│   └── MonitoringService.js ✅ Complete (Phase 6)
 └── api/routes/
     ├── agents.js            ✅ Complete
     ├── bootstrap.js         ✅ Complete
-    ├── teams.js             ❌ Not built (Phase 5)
-    └── monitoring.js        ❌ Not built (Phase 6)
+    ├── teams.js             ✅ Complete (Phase 5)
+    └── monitoring.js        ✅ Complete (Phase 3 + Phase 6)
 ```
 
 ### Frontend (UI)
@@ -187,9 +216,16 @@ broker/src/
 ui/src/
 ├── components/
 │   ├── agents/              ✅ All components built
+│   ├── monitoring/          ✅ Phase 3 Observability complete
+│   │   ├── TeamObservabilityDashboard.jsx ✅
+│   │   ├── ConversationTimeline.jsx       ✅
+│   │   ├── CleanConversationView.jsx      ✅
+│   │   ├── MessageFlowGraph.jsx           ✅
+│   │   ├── ConversationView.jsx           ✅
+│   │   └── SimpleTimeline.jsx             ✅
 │   ├── AgentNode.jsx        ✅ Complete (with bootstrap status)
-│   ├── TeamManager.jsx      ❌ Not built (Phase 5)
-│   └── MonitoringDashboard.jsx ❌ Not built (Phase 6)
+│   ├── TeamManager.jsx      ✅ Complete (Phase 5)
+│   └── MonitoringDashboard.jsx ✅ Complete (Phase 6)
 ├── services/
 │   ├── api/
 │   │   ├── client.js        ✅ Complete
@@ -202,9 +238,11 @@ ui/src/
 │   └── api-client.js        ✅ Complete
 ├── stores/
 │   ├── useAgentStore.js     ✅ Complete (Zustand)
-│   └── useUIStore.js        ✅ Complete (Zustand)
+│   ├── useUIStore.js        ✅ Complete (Zustand)
+│   └── useObservabilityStore.js ✅ Complete (Phase 3)
 └── pages/
-    └── Canvas.jsx           ✅ Refactored (262 lines!)
+    ├── Canvas.jsx           ✅ Refactored (262 lines!)
+    └── MonitoringPage.jsx   ✅ Complete (Phase 3)
 ```
 
 ## Database Tables
