@@ -118,7 +118,27 @@ db.exec(`
   )
 `);
 
-// Create indexes for common queries
+console.log('[db] ✓ Database tables created');
+
+// Run migrations
+const migrator = getMigrator(db);
+try {
+  const migrationsApplied = migrator.migrate();
+  if (migrationsApplied > 0) {
+    console.log(`[db] ✓ Applied ${migrationsApplied} migration(s)`);
+  }
+
+  // Verify integrity
+  if (!migrator.verifyIntegrity()) {
+    console.error('[db] ⚠️  Migration integrity check failed - migrations may have been modified after applying');
+  }
+} catch (error) {
+  console.error('[db] Failed to run migrations:', error.message);
+  // Don't exit - allow broker to start even if migrations fail
+  // This ensures we can still debug the issue
+}
+
+// Create indexes for common queries (after migrations to ensure all columns exist)
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tickets_target_agent ON tickets(target_agent);
   CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
@@ -139,23 +159,5 @@ db.exec(`
 `);
 
 console.log('[db] ✓ Database schema initialized');
-
-// Run migrations
-const migrator = getMigrator(db);
-try {
-  const migrationsApplied = migrator.migrate();
-  if (migrationsApplied > 0) {
-    console.log(`[db] ✓ Applied ${migrationsApplied} migration(s)`);
-  }
-
-  // Verify integrity
-  if (!migrator.verifyIntegrity()) {
-    console.error('[db] ⚠️  Migration integrity check failed - migrations may have been modified after applying');
-  }
-} catch (error) {
-  console.error('[db] Failed to run migrations:', error.message);
-  // Don't exit - allow broker to start even if migrations fail
-  // This ensures we can still debug the issue
-}
 
 export default db;
